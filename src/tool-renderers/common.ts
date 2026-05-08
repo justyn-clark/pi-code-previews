@@ -66,10 +66,14 @@ function renderCodePreviewCall<TState, TArgs>(
   theme: Theme,
   render: (context: PreviewRenderContext<TState, TArgs>) => Component,
 ): Component {
-  const timing = updateToolCallTiming(context);
-  if (mode !== "border") return render(context);
+  if (mode !== "border") {
+    const component = render(context);
+    updateToolCallTiming(context, { animate: false });
+    return component;
+  }
   const state = borderState(context);
   const callComponent = render(withLastComponent(context, state.codePreviewBorderCallComponent));
+  const timing = updateToolCallTiming(context);
   state.codePreviewBorderCallComponent = callComponent;
   const shell =
     state.codePreviewBorderShell instanceof BorderedToolCall &&
@@ -153,6 +157,7 @@ function renderTimedResultFooter<TState, TArgs>(
 
 function updateToolCallTiming<TState, TArgs>(
   context: PreviewRenderContext<TState, TArgs>,
+  options: { animate?: boolean } = {},
 ): ToolCallTiming | undefined {
   const state = timingState(context);
   if (!state) return undefined;
@@ -160,21 +165,27 @@ function updateToolCallTiming<TState, TArgs>(
     clearToolCallTimingInterval(state);
     return undefined;
   }
-  if (context.executionStarted && state.codePreviewTimingStartedAt === undefined) {
+  if (
+    context.executionStarted &&
+    state.codePreviewTimingStartedAt === undefined &&
+    context.isPartial !== false
+  ) {
     state.codePreviewTimingStartedAt = Date.now();
     state.codePreviewTimingEndedAt = undefined;
   }
 
   const startedAt = state.codePreviewTimingStartedAt;
   if (startedAt === undefined) return undefined;
-  if (context.isPartial) ensureToolCallTimingInterval(state, context.invalidate);
-  else {
+  if (context.isPartial === true && options.animate !== false)
+    ensureToolCallTimingInterval(state, context.invalidate);
+  else if (context.isPartial === false) {
     state.codePreviewTimingEndedAt ??= Date.now();
     clearToolCallTimingInterval(state);
   }
 
-  const endTime = context.isPartial ? Date.now() : (state.codePreviewTimingEndedAt ?? Date.now());
-  const label = context.isPartial ? "Elapsed" : "Took";
+  const running = context.isPartial === true;
+  const endTime = running ? Date.now() : (state.codePreviewTimingEndedAt ?? Date.now());
+  const label = running ? "Elapsed" : "Took";
   return { label: `${label} ${formatToolCallDuration(endTime - startedAt)}` };
 }
 

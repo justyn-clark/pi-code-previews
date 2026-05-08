@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
-import { delay, renderComponent, stripAnsi, testTheme } from "./test-utils.ts";
+import { test, vi } from "vitest";
+import { codePreviewSettings, setCodePreviewSettings } from "../src/settings.ts";
+import {
+  cloneCodePreviewSettingsForTest,
+  delay,
+  renderComponent,
+  stripAnsi,
+  testTheme,
+} from "./test-utils.ts";
 import {
   findRenderer,
   preserveCodePreviewToolsEnv,
@@ -46,6 +53,70 @@ test("registered edit call previews proposed edits before execution", () => {
   );
   assert.match(started, /edit src\/a\.ts/);
   assert.doesNotMatch(started, /proposed edit/);
+});
+
+test("registered edit timing measures execution start to result completion", () => {
+  process.env.CODE_PREVIEW_TOOLS = "edit";
+  const previousSettings = cloneCodePreviewSettingsForTest();
+  setCodePreviewSettings({
+    ...codePreviewSettings,
+    toolCallBackground: "on",
+    toolCallTiming: true,
+  });
+  try {
+    const edit = findRenderer(registerRenderers(), "edit");
+    assert.ok(edit.renderCall);
+    assert.ok(edit.renderResult);
+
+    const args = {
+      path: "src/a.ts",
+      edits: [{ oldText: "old", newText: "new" }],
+    };
+    const state = {};
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    edit.renderCall(args, testTheme(), {
+      argsComplete: true,
+      cwd: "/tmp/project",
+      executionStarted: true,
+      expanded: true,
+      invalidate: () => undefined,
+      isError: false,
+      isPartial: true,
+      lastComponent: undefined,
+      showImages: true,
+      state,
+      toolCallId: "tool-1",
+    });
+
+    vi.mocked(Date.now).mockReturnValue(3_120);
+    const result = edit.renderResult(
+      {
+        content: [{ type: "text", text: "ok" }],
+        details: { diff: "-old\n+new" },
+      },
+      { expanded: true, isPartial: false },
+      testTheme(),
+      {
+        args,
+        argsComplete: true,
+        cwd: "/tmp/project",
+        executionStarted: true,
+        expanded: true,
+        invalidate: () => undefined,
+        isError: false,
+        isPartial: false,
+        lastComponent: undefined,
+        showImages: true,
+        state,
+        toolCallId: "tool-1",
+      },
+    );
+
+    assert.match(stripAnsi(renderComponent(result)), /╰─ Took 2\.1s/);
+  } finally {
+    vi.restoreAllMocks();
+    setCodePreviewSettings(previousSettings);
+  }
 });
 
 test("registered edit result header omits insertion and deletion shape counts", () => {

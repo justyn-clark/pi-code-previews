@@ -52,6 +52,22 @@ test("non-border shell appends tool timing to result footer", () => {
   assert.match(stripAnsi(renderComponent(result)), /result\n╰─ Took 1\.2s/);
 });
 
+test("non-border shell does not show running tool timing on the call", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
+  const shell = createCodePreviewToolShell("on");
+  const state = {};
+  vi.spyOn(Date, "now").mockReturnValue(1_000);
+
+  const call = shell.renderCall(
+    baseRenderContext(state, { executionStarted: true }),
+    testTheme(),
+    () => textComponent("call"),
+  );
+
+  vi.mocked(Date.now).mockReturnValue(1_500);
+  assert.equal(stripAnsi(renderComponent(call)), "call");
+});
+
 test("border shell shows tool timing in bottom-right border", () => {
   setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
   const shell = createCodePreviewToolShell("border");
@@ -96,6 +112,31 @@ test("tool timing setting hides timing labels", () => {
   assert.equal(stripAnsi(renderComponent(result)), "result");
 });
 
+test("tool timing excludes call and result render work", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
+  const shell = createCodePreviewToolShell("on");
+  const state = {};
+  let now = 1_000;
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+
+  shell.renderCall(baseRenderContext(state, { executionStarted: true }), testTheme(), () => {
+    now = 4_000;
+    return textComponent("call");
+  });
+
+  now = 5_000;
+  const result = shell.renderResult(
+    baseRenderContext(state, { executionStarted: true, isPartial: false }),
+    testTheme(),
+    () => {
+      now = 9_000;
+      return textComponent("result");
+    },
+  );
+
+  assert.match(stripAnsi(renderComponent(result)), /╰─ Took 1\.0s/);
+});
+
 test("tool timing invalidates every 100ms while partial and stops when complete", () => {
   setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
   vi.useFakeTimers();
@@ -109,6 +150,18 @@ test("tool timing invalidates every 100ms while partial and stops when complete"
     () => textComponent("call"),
   );
 
+  vi.advanceTimersByTime(500);
+  assert.equal(invalidations, 0);
+
+  shell.renderResult(
+    baseRenderContext(state, {
+      executionStarted: true,
+      invalidate: () => invalidations++,
+      isPartial: true,
+    }),
+    testTheme(),
+    () => textComponent("result"),
+  );
   vi.advanceTimersByTime(500);
   assert.equal(invalidations, 5);
 

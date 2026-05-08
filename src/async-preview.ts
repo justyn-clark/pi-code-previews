@@ -3,7 +3,7 @@ import { Text, type Component } from "@mariozechner/pi-tui";
 import { positiveEnvInteger } from "./env.ts";
 import { escapeControlChars } from "./terminal-text.ts";
 
-const ASYNC_RENDER_CHAR_THRESHOLD = positiveEnvInteger("CODE_PREVIEW_ASYNC_RENDER_CHARS", 20000);
+const ASYNC_RENDER_CHAR_THRESHOLD = positiveEnvInteger("CODE_PREVIEW_ASYNC_RENDER_CHARS", 8000);
 
 export function shouldRenderAsync(text: string): boolean {
   return text.length > ASYNC_RENDER_CHAR_THRESHOLD;
