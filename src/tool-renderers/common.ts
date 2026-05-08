@@ -442,27 +442,41 @@ class BorderedToolCall implements Component {
     const innerWidth = Math.max(1, width - 4);
     const border = (value: string) => this.theme.fg(this.borderColorKey, value);
     return [
-      border(`╭${"─".repeat(width - 2)}╮`),
+      this.renderTopBorder(width, border),
       ...this.renderBody(innerWidth).map((line) => this.frameLine(line, innerWidth, border)),
       this.renderBottomBorder(width, border),
     ];
   }
 
+  private renderTopBorder(width: number, border: (value: string) => string): string {
+    return this.renderBorderWithRightLabel(width, border, "top", this.topRightLabel());
+  }
+
   private renderBottomBorder(width: number, border: (value: string) => string): string {
+    return this.renderBorderWithRightLabel(width, border, "bottom", this.bottomRightLabel());
+  }
+
+  private renderBorderWithRightLabel(
+    width: number,
+    border: (value: string) => string,
+    position: "top" | "bottom",
+    label: string,
+  ): string {
     const innerWidth = width - 2;
-    const label = this.bottomRightLabel();
+    const open = position === "top" ? "╭" : "╰";
+    const close = position === "top" ? "╮" : "╯";
     const labelWidth = visibleWidth(label);
-    if (labelWidth === 0) return border(`╰${"─".repeat(innerWidth)}╯`);
-    if (labelWidth > innerWidth) return border(`╰${"─".repeat(innerWidth)}╯`);
-    return `${border("╰")}${border("─".repeat(innerWidth - labelWidth))}${label}${border("╯")}`;
+    if (labelWidth === 0) return border(`${open}${"─".repeat(innerWidth)}${close}`);
+    if (labelWidth > innerWidth) return border(`${open}${"─".repeat(innerWidth)}${close}`);
+    return `${border(open)}${border("─".repeat(innerWidth - labelWidth))}${label}${border(close)}`;
+  }
+
+  private topRightLabel(): string {
+    return this.timingLabel ? ` ${this.theme.fg("muted", this.timingLabel)} ` : "";
   }
 
   private bottomRightLabel(): string {
-    const labels = [
-      this.expandLabel,
-      this.timingLabel ? this.theme.fg("muted", this.timingLabel) : undefined,
-    ].filter((label): label is string => Boolean(label));
-    return labels.length ? ` ${labels.join(this.theme.fg("muted", " - "))} ` : "";
+    return this.expandLabel ? ` ${this.expandLabel} ` : "";
   }
 
   private renderBody(width: number): string[] {

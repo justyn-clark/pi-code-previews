@@ -175,7 +175,7 @@ test("registered renderers can use a self shell when tool backgrounds are disabl
   }
 });
 
-test("border mode puts hidden output expand hints beside timing in the bottom-right border", () => {
+test("border mode puts hidden output expand hints in the bottom-right border and timing in the top-right border", () => {
   process.env.CODE_PREVIEW_TOOLS = "bash";
   setCodePreviewSettings({
     ...defaultCodePreviewSettings,
@@ -216,8 +216,11 @@ test("border mode puts hidden output expand hints beside timing in the bottom-ri
 
     assert.equal(stripAnsi(renderComponent(result, 72)), "");
     const rendered = stripAnsi(renderComponent(call, 72));
+    const rows = rendered.split("\n");
     assert.doesNotMatch(rendered, /│ .*expand/);
-    assert.match(rendered, /╰─+ .*expand - 3\.0s ╯$/);
+    assert.match(rows.at(0) ?? "", /╭─+ 3\.0s ╮$/);
+    assert.match(rows.at(-1) ?? "", /╰─+ .*expand ╯$/);
+    assert.doesNotMatch(rows.at(-1) ?? "", /3\.0s/);
     assert.doesNotMatch(rendered, /output hidden/);
   } finally {
     vi.restoreAllMocks();

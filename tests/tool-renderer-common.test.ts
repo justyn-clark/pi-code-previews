@@ -68,7 +68,7 @@ test("non-border shell does not show running tool timing on the call", () => {
   assert.equal(stripAnsi(renderComponent(call)), "call");
 });
 
-test("border shell shows tool timing in bottom-right border", () => {
+test("border shell shows tool timing in top-right border", () => {
   setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
   const shell = createCodePreviewToolShell("border");
   const state = {};
@@ -89,7 +89,8 @@ test("border shell shows tool timing in bottom-right border", () => {
   );
 
   const rows = stripAnsi(renderComponent(component, 40)).split("\n");
-  assert.match(rows.at(-1) ?? "", /1\.2s ╯$/);
+  assert.match(rows.at(0) ?? "", /1\.2s ╮$/);
+  assert.doesNotMatch(rows.at(-1) ?? "", /1\.2s/);
 });
 
 test("tool timing setting hides timing labels", () => {
