@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { registerToolRenderers } from "../src/renderers.ts";
+import { defaultCodePreviewSettings, setCodePreviewSettings } from "../src/settings.ts";
 import type { CodePreviewToolName } from "../src/tool-names.ts";
 import {
   formatActiveCodePreviewTools,
@@ -11,6 +12,7 @@ import {
   preserveCodePreviewToolsEnv,
   registerRenderers,
 } from "./renderer-test-utils.ts";
+import { renderComponent, stripAnsi, testTheme } from "./test-utils.ts";
 
 preserveCodePreviewToolsEnv();
 
@@ -149,10 +151,95 @@ test("registered edit renderer preserves built-in metadata and prepareArguments 
   const edit = findRenderer(registerRenderers(), "edit");
   assert.equal(edit.name, "edit");
   assert.equal(typeof edit.prepareArguments, "function");
+  assert.equal(edit.renderShell, "default");
   assert.equal(typeof edit.promptSnippet, "string");
   assert.ok(edit.promptGuidelines?.length);
   assert.deepEqual(edit.prepareArguments?.({ path: "a.txt", oldText: "a", newText: "b" }), {
     path: "a.txt",
     edits: [{ oldText: "a", newText: "b" }],
   });
+});
+
+test("registered renderers can use a self shell when tool backgrounds are disabled", () => {
+  process.env.CODE_PREVIEW_TOOLS = "bash,edit";
+  setCodePreviewSettings({
+    ...defaultCodePreviewSettings,
+    toolCallBackground: "off",
+  });
+  try {
+    const registered = registerRenderers();
+    assert.equal(findRenderer(registered, "bash").renderShell, "self");
+    assert.equal(findRenderer(registered, "edit").renderShell, "self");
+  } finally {
+    setCodePreviewSettings(defaultCodePreviewSettings);
+  }
+});
+
+test("border mode wraps tool call and result in a status-colored border-only shell", () => {
+  process.env.CODE_PREVIEW_TOOLS = "bash";
+  setCodePreviewSettings({
+    ...defaultCodePreviewSettings,
+    toolCallBackground: "border",
+  });
+  try {
+    const bash = findRenderer(registerRenderers(), "bash");
+    assert.equal(bash.renderShell, "self");
+    assert.ok(bash.renderCall);
+    assert.ok(bash.renderResult);
+
+    const state = {};
+    const coloredTheme = {
+      ...testTheme(),
+      fg: (key: string, text: string) =>
+        ["warning", "success", "error", "borderMuted"].includes(key)
+          ? `<${key}>${text}</${key}>`
+          : text,
+    };
+    const context = {
+      args: { command: "echo hi" },
+      argsComplete: true,
+      cwd: "/tmp/project",
+      executionStarted: false,
+      expanded: true,
+      invalidate: () => undefined,
+      isError: false,
+      isPartial: false,
+      lastComponent: undefined,
+      showImages: true,
+      state,
+      toolCallId: "tool-1",
+    };
+    const pending = renderComponent(
+      bash.renderCall(context.args, coloredTheme, { ...context, isPartial: true }),
+      30,
+    );
+    assert.match(pending, /^<warning>╭─+╮<\/warning>/);
+
+    const call = bash.renderCall(context.args, coloredTheme, context);
+    const result = bash.renderResult(
+      { content: [{ type: "text", text: "ok" }], details: {} },
+      { expanded: true, isPartial: false },
+      coloredTheme,
+      context,
+    );
+
+    assert.equal(stripAnsi(renderComponent(result, 30)), "");
+    const rendered = stripAnsi(renderComponent(call, 30));
+    assert.match(rendered, /^<success>╭─+╮<\/success>/);
+    const plain = rendered.replace(/<\/?[a-zA-Z]+>/g, "");
+    assert.match(plain, /^╭─+╮/);
+    assert.match(plain, /│ \$ echo hi\s+│/);
+    assert.match(plain, /│ ok\s+│/);
+    assert.match(plain, /╰─+╯$/);
+
+    bash.renderResult(
+      { content: [{ type: "text", text: "failed" }], details: {} },
+      { expanded: true, isPartial: false },
+      coloredTheme,
+      { ...context, isError: true },
+    );
+    assert.match(renderComponent(call, 30), /^<error>╭─+╮<\/error>/);
+  } finally {
+    setCodePreviewSettings(defaultCodePreviewSettings);
+  }
 });

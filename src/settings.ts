@@ -10,12 +10,14 @@ import {
 
 export type DiffBackgroundIntensity = "off" | "subtle" | "medium";
 export type DiffWordEmphasis = "off" | "smart" | "all";
+export type ToolCallBackgroundMode = "on" | "off" | "border";
 export type PathIconMode = "off" | "unicode" | "nerd";
 
 export interface CodePreviewSettings {
   shikiTheme: string;
   diffIntensity: DiffBackgroundIntensity;
   wordEmphasis: DiffWordEmphasis;
+  toolCallBackground: ToolCallBackgroundMode;
   readCollapsedLines: number;
   readContentPreview: boolean;
   writeCollapsedLines: number;
@@ -38,6 +40,7 @@ export const defaultCodePreviewSettings: CodePreviewSettings = {
   shikiTheme: envTheme("CODE_PREVIEW_THEME", "dark-plus"),
   diffIntensity: envDiffIntensity("CODE_PREVIEW_DIFF_INTENSITY", "subtle"),
   wordEmphasis: envDiffWordEmphasis("CODE_PREVIEW_WORD_EMPHASIS", "all"),
+  toolCallBackground: envToolCallBackgroundMode("CODE_PREVIEW_TOOL_CALL_BACKGROUND", "on"),
   readCollapsedLines: positiveEnvInteger("CODE_PREVIEW_READ_LINES", 10),
   readContentPreview: envBoolean("CODE_PREVIEW_READ_CONTENT", true),
   writeCollapsedLines: positiveEnvInteger("CODE_PREVIEW_WRITE_LINES", 10),
@@ -96,6 +99,7 @@ export function normalizeSettings(
   const shikiTheme = getObjectValue(data, "shikiTheme");
   const diffIntensity = getObjectValue(data, "diffIntensity");
   const wordEmphasis = getObjectValue(data, "wordEmphasis");
+  const toolCallBackground = getObjectValue(data, "toolCallBackground");
   const readContentPreview = getObjectValue(data, "readContentPreview");
   const grepResultPreview = getObjectValue(data, "grepResultPreview");
   const findResultPreview = getObjectValue(data, "findResultPreview");
@@ -112,6 +116,10 @@ export function normalizeSettings(
       ? diffIntensity
       : fallback.diffIntensity,
     wordEmphasis: isDiffWordEmphasis(wordEmphasis) ? wordEmphasis : fallback.wordEmphasis,
+    toolCallBackground: coerceToolCallBackgroundMode(
+      toolCallBackground,
+      fallback.toolCallBackground,
+    ),
     readCollapsedLines: coerceNumber(
       getObjectValue(data, "readCollapsedLines"),
       fallback.readCollapsedLines,
@@ -168,6 +176,9 @@ const SETTING_UPDATERS = {
   },
   wordEmphasis: (next, _current, value) => {
     if (isDiffWordEmphasis(value)) next.wordEmphasis = value;
+  },
+  toolCallBackground: (next, _current, value) => {
+    if (isToolCallBackgroundMode(value)) next.toolCallBackground = value;
   },
   readCollapsedLines: (next, current, value) => {
     next.readCollapsedLines = coerceStringNumber(value, current.readCollapsedLines);
@@ -276,6 +287,18 @@ function envDiffWordEmphasis(name: string, fallback: DiffWordEmphasis): DiffWord
   return isDiffWordEmphasis(value) ? value : fallback;
 }
 
+function envToolCallBackgroundMode(
+  name: string,
+  fallback: ToolCallBackgroundMode,
+): ToolCallBackgroundMode {
+  const value = process.env[name]?.toLowerCase();
+  if (value === undefined) return fallback;
+  if (isToolCallBackgroundMode(value)) return value;
+  if (value === "1" || value === "true" || value === "yes") return "on";
+  if (value === "0" || value === "false" || value === "no") return "off";
+  return fallback;
+}
+
 function envPathIconMode(name: string, fallback: PathIconMode): PathIconMode {
   const value = process.env[name]?.toLowerCase();
   return isPathIconMode(value) ? value : fallback;
@@ -294,6 +317,20 @@ function coerceStringNumber(value: string, fallback: number): number {
 function coerceEditPreviewLines(value: unknown, fallback: number | "all"): number | "all" {
   if (value === "all") return "all";
   if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
+  return fallback;
+}
+
+function coerceToolCallBackgroundMode(
+  value: unknown,
+  fallback: ToolCallBackgroundMode,
+): ToolCallBackgroundMode {
+  if (typeof value === "boolean") return value ? "on" : "off";
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (isToolCallBackgroundMode(normalized)) return normalized;
+    if (normalized === "1" || normalized === "true" || normalized === "yes") return "on";
+    if (normalized === "0" || normalized === "false" || normalized === "no") return "off";
+  }
   return fallback;
 }
 
@@ -352,6 +389,10 @@ function isDiffBackgroundIntensity(value: unknown): value is DiffBackgroundInten
 
 function isDiffWordEmphasis(value: unknown): value is DiffWordEmphasis {
   return value === "off" || value === "smart" || value === "all";
+}
+
+function isToolCallBackgroundMode(value: unknown): value is ToolCallBackgroundMode {
+  return value === "on" || value === "off" || value === "border";
 }
 
 function isPathIconMode(value: unknown): value is PathIconMode {

@@ -16,6 +16,7 @@ test("settings normalization and reset preserve defaults", () => {
     secretWarnings: false,
     bashWarnings: false,
     bashResultPreview: false,
+    toolCallBackground: false,
     readContentPreview: false,
     grepResultPreview: false,
     findResultPreview: false,
@@ -27,6 +28,7 @@ test("settings normalization and reset preserve defaults", () => {
   assert.equal(normalized.secretWarnings, false);
   assert.equal(normalized.bashWarnings, false);
   assert.equal(normalized.bashResultPreview, false);
+  assert.equal(normalized.toolCallBackground, "off");
   assert.equal(normalized.readContentPreview, false);
   assert.equal(normalized.grepResultPreview, false);
   assert.equal(normalized.findResultPreview, false);
@@ -65,7 +67,16 @@ test("settings normalization falls back to accumulated settings for invalid over
   assert.equal(updateSetting(validOverride, "findResultPreview", "off").findResultPreview, false);
   assert.equal(updateSetting(validOverride, "lsResultPreview", "off").lsResultPreview, false);
   assert.equal(updateSetting(validOverride, "bashResultPreview", "off").bashResultPreview, false);
+  assert.equal(updateSetting(validOverride, "toolCallBackground", "off").toolCallBackground, "off");
+  assert.equal(
+    updateSetting(validOverride, "toolCallBackground", "border").toolCallBackground,
+    "border",
+  );
   assert.equal(normalizeSettings({ wordEmphasis: "off" }, fallback).wordEmphasis, "off");
+  assert.equal(
+    normalizeSettings({ toolCallBackground: "border" }, fallback).toolCallBackground,
+    "border",
+  );
   assert.deepEqual(normalizeSettings({ tools: "read,grep" }, fallback).tools, ["read", "grep"]);
 });
 
@@ -138,6 +149,14 @@ test("settings UI item values are handled by updateSetting", () => {
     "smart",
   );
   assert.deepEqual(updateSetting(defaultCodePreviewSettings, "tools", "none").tools, []);
+  assert.equal(
+    updateSetting(defaultCodePreviewSettings, "toolCallBackground", "off").toolCallBackground,
+    "off",
+  );
+  assert.equal(
+    updateSetting(defaultCodePreviewSettings, "toolCallBackground", "border").toolCallBackground,
+    "border",
+  );
   assert.equal(
     updateSetting(defaultCodePreviewSettings, "readContentPreview", "off").readContentPreview,
     false,

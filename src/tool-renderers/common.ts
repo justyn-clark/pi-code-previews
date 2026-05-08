@@ -1,5 +1,5 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { Component } from "@mariozechner/pi-tui";
+import { Container, truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import {
   countLabel,
   hiddenLinesMarker,
@@ -9,11 +9,207 @@ import {
 import { positiveEnvInteger } from "../env.ts";
 import { hashString } from "../hash.ts";
 import { getSecretWarnings } from "../secret-warnings.ts";
-import { codePreviewSettings } from "../settings.ts";
+import { codePreviewSettings, type ToolCallBackgroundMode } from "../settings.ts";
 import { renderHighlightedText } from "../shiki.ts";
 import { escapeControlChars } from "../terminal-text.ts";
 
 const SECRET_SCAN_CHARS = positiveEnvInteger("CODE_PREVIEW_SECRET_SCAN_CHARS", 200_000);
+
+interface PreviewRenderContext<TState, TArgs> {
+  args: TArgs;
+  toolCallId: string;
+  invalidate: () => void;
+  lastComponent: Component | undefined;
+  state: TState;
+  cwd: string;
+  executionStarted: boolean;
+  argsComplete: boolean;
+  isPartial: boolean;
+  expanded: boolean;
+  showImages: boolean;
+  isError: boolean;
+}
+
+export interface CodePreviewToolShell {
+  renderShell: "default" | "self";
+  renderCall<TState, TArgs>(
+    context: PreviewRenderContext<TState, TArgs>,
+    theme: Theme,
+    render: (context: PreviewRenderContext<TState, TArgs>) => Component,
+  ): Component;
+  renderResult<TState, TArgs>(
+    context: PreviewRenderContext<TState, TArgs>,
+    theme: Theme,
+    render: (context: PreviewRenderContext<TState, TArgs>) => Component,
+  ): Component;
+}
+
+export function createCodePreviewToolShell(
+  mode: ToolCallBackgroundMode = codePreviewSettings.toolCallBackground,
+): CodePreviewToolShell {
+  return {
+    renderShell: codePreviewRenderShell(mode),
+    renderCall: (context, theme, render) => renderCodePreviewCall(mode, context, theme, render),
+    renderResult: (context, theme, render) => renderCodePreviewResult(mode, context, theme, render),
+  };
+}
+
+export function codePreviewRenderShell(
+  mode: ToolCallBackgroundMode = codePreviewSettings.toolCallBackground,
+): "default" | "self" {
+  return mode === "on" ? "default" : "self";
+}
+
+function renderCodePreviewCall<TState, TArgs>(
+  mode: ToolCallBackgroundMode,
+  context: PreviewRenderContext<TState, TArgs>,
+  theme: Theme,
+  render: (context: PreviewRenderContext<TState, TArgs>) => Component,
+): Component {
+  if (mode !== "border") return render(context);
+  const state = borderState(context);
+  const callComponent = render(withLastComponent(context, state.codePreviewBorderCallComponent));
+  state.codePreviewBorderCallComponent = callComponent;
+  const shell =
+    state.codePreviewBorderShell instanceof BorderedToolCall &&
+    state.codePreviewBorderTheme === theme
+      ? state.codePreviewBorderShell
+      : new BorderedToolCall(theme);
+  shell.setBorderColor(borderColorKey(context));
+  shell.setCall(callComponent);
+  shell.setResult(state.codePreviewBorderResultComponent);
+  state.codePreviewBorderShell = shell;
+  state.codePreviewBorderTheme = theme;
+  return shell;
+}
+
+function renderCodePreviewResult<TState, TArgs>(
+  mode: ToolCallBackgroundMode,
+  context: PreviewRenderContext<TState, TArgs>,
+  theme: Theme,
+  render: (context: PreviewRenderContext<TState, TArgs>) => Component,
+): Component {
+  if (mode !== "border") return render(context);
+  const state = borderState(context);
+  const resultComponent = render(
+    withLastComponent(context, state.codePreviewBorderResultComponent),
+  );
+  state.codePreviewBorderResultComponent = resultComponent;
+  if (
+    state.codePreviewBorderShell instanceof BorderedToolCall &&
+    state.codePreviewBorderTheme === theme
+  ) {
+    state.codePreviewBorderShell.setBorderColor(borderColorKey(context));
+    state.codePreviewBorderShell.setResult(resultComponent);
+  } else {
+    const shell = new BorderedToolCall(theme);
+    shell.setBorderColor(borderColorKey(context));
+    shell.setCall(state.codePreviewBorderCallComponent);
+    shell.setResult(resultComponent);
+    state.codePreviewBorderShell = shell;
+    state.codePreviewBorderTheme = theme;
+  }
+  return new Container();
+}
+
+function withLastComponent<TState, TArgs>(
+  context: PreviewRenderContext<TState, TArgs>,
+  lastComponent: Component | undefined,
+): PreviewRenderContext<TState, TArgs> {
+  return { ...context, lastComponent };
+}
+
+type BorderState = Record<string, unknown> & {
+  codePreviewBorderCallComponent?: Component;
+  codePreviewBorderResultComponent?: Component;
+  codePreviewBorderShell?: BorderedToolCall;
+  codePreviewBorderTheme?: Theme;
+};
+
+function borderState<TState, TArgs>(context: PreviewRenderContext<TState, TArgs>): BorderState {
+  return context.state as BorderState;
+}
+
+type BorderColorKey = "borderMuted" | "warning" | "success" | "error";
+
+function borderColorKey<TState, TArgs>(
+  context: PreviewRenderContext<TState, TArgs>,
+): BorderColorKey {
+  if (context.isError) return "error";
+  if (context.isPartial) return "warning";
+  return "success";
+}
+
+const RESET_ANSI = "\x1b[0m";
+
+class BorderedToolCall implements Component {
+  private callComponent: Component | undefined;
+  private borderColorKey: BorderColorKey = "borderMuted";
+  private resultComponent: Component | undefined;
+  private cachedWidth: number | undefined;
+  private cachedRows: string[] | undefined;
+
+  constructor(private readonly theme: Theme) {}
+
+  setBorderColor(colorKey: BorderColorKey): void {
+    if (this.borderColorKey === colorKey) return;
+    this.borderColorKey = colorKey;
+    this.invalidateCache();
+  }
+
+  setCall(component: Component | undefined): void {
+    this.callComponent = component;
+    this.invalidateCache();
+  }
+
+  setResult(component: Component | undefined): void {
+    this.resultComponent = component;
+    this.invalidateCache();
+  }
+
+  render(width: number): string[] {
+    if (this.cachedWidth === width && this.cachedRows) return this.cachedRows;
+    const rows = this.renderUncached(width);
+    this.cachedWidth = width;
+    this.cachedRows = rows;
+    return rows;
+  }
+
+  invalidate(): void {
+    this.invalidateCache();
+    this.callComponent?.invalidate?.();
+    this.resultComponent?.invalidate?.();
+  }
+
+  private invalidateCache(): void {
+    this.cachedWidth = undefined;
+    this.cachedRows = undefined;
+  }
+
+  private renderUncached(width: number): string[] {
+    if (width < 4) return this.renderBody(Math.max(1, width));
+    const innerWidth = Math.max(1, width - 4);
+    const border = (value: string) => this.theme.fg(this.borderColorKey, value);
+    return [
+      border(`╭${"─".repeat(width - 2)}╮`),
+      ...this.renderBody(innerWidth).map((line) => this.frameLine(line, innerWidth, border)),
+      border(`╰${"─".repeat(width - 2)}╯`),
+    ];
+  }
+
+  private renderBody(width: number): string[] {
+    return [
+      ...(this.callComponent?.render(width) ?? []),
+      ...(this.resultComponent?.render(width) ?? []),
+    ];
+  }
+
+  private frameLine(line: string, innerWidth: number, border: (value: string) => string): string {
+    const truncated = truncateToWidth(line, innerWidth, "");
+    const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(truncated)));
+    return `${border("│")} ${truncated}${RESET_ANSI}${padding} ${border("│")}`;
+  }
+}
 
 export function withSecretWarning(source: string, theme: Theme, preview: string): string {
   if (!codePreviewSettings.secretWarnings) return preview;

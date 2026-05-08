@@ -24,6 +24,7 @@ import {
 } from "../write-diff.ts";
 import {
   cachedPreview,
+  createCodePreviewToolShell,
   countFileLines,
   previewCacheKey,
   renderHighlightedPreviewText,
@@ -32,9 +33,11 @@ import {
 
 export function registerWrite(pi: ExtensionAPI, cwd: string) {
   const originalWrite = createWriteToolDefinition(cwd);
+  const previewShell = createCodePreviewToolShell();
 
   pi.registerTool({
     ...originalWrite,
+    renderShell: previewShell.renderShell,
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const path = getPathArg(params);
@@ -46,83 +49,99 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
     },
 
     renderCall(args, theme, context) {
-      const path = getPathArg(args);
-      const content = typeof args.content === "string" ? args.content : "";
-      const lang = resolvePreviewLanguage({ path, content, piLanguage: getLanguageFromPath(path) });
-      const limit = context.expanded ? 0 : codePreviewSettings.writeCollapsedLines;
-      const skipHighlight = shouldSkipHighlight(content);
-      const preview = renderHighlightedPreviewText(
-        content,
-        limit,
-        skipHighlight ? undefined : lang,
-        theme,
-        context.invalidate,
-      );
+      return previewShell.renderCall(context, theme, (renderContext) => {
+        const path = getPathArg(args);
+        const content = typeof args.content === "string" ? args.content : "";
+        const lang = resolvePreviewLanguage({
+          path,
+          content,
+          piLanguage: getLanguageFromPath(path),
+        });
+        const limit = renderContext.expanded ? 0 : codePreviewSettings.writeCollapsedLines;
+        const skipHighlight = shouldSkipHighlight(content);
+        const preview = renderHighlightedPreviewText(
+          content,
+          limit,
+          skipHighlight ? undefined : lang,
+          theme,
+          renderContext.invalidate,
+        );
 
-      let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
-      text += metadata(theme, [
-        formatBytes(Buffer.byteLength(content, "utf8")),
-        countLabel(preview.total, "line"),
-        lang ? normalizeShikiLanguage(lang) : undefined,
-      ]);
-      const contentPreview = preview.lines.length
-        ? withSecretWarning(content, theme, preview.lines.join("\n"))
-        : theme.fg("muted", "Empty content");
-      text += `\n${contentPreview}`;
-      if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
-      if (skipHighlight)
-        text += previewFooter(theme, "Syntax highlighting skipped for large content");
-      return new Text(text, 0, 0);
+        let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
+        text += metadata(theme, [
+          formatBytes(Buffer.byteLength(content, "utf8")),
+          countLabel(preview.total, "line"),
+          lang ? normalizeShikiLanguage(lang) : undefined,
+        ]);
+        const contentPreview = preview.lines.length
+          ? withSecretWarning(content, theme, preview.lines.join("\n"))
+          : theme.fg("muted", "Empty content");
+        text += `\n${contentPreview}`;
+        if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
+        if (skipHighlight)
+          text += previewFooter(theme, "Syntax highlighting skipped for large content");
+        return new Text(text, 0, 0);
+      });
     },
 
     renderResult(result, { expanded }, theme, context) {
-      const firstText = getTextContent(result.content);
-      if (context.isError)
-        return new Text(theme.fg("error", escapeControlChars(firstText || "Write failed")), 0, 0);
+      return previewShell.renderResult(context, theme, (renderContext) => {
+        const firstText = getTextContent(result.content);
+        if (renderContext.isError)
+          return new Text(theme.fg("error", escapeControlChars(firstText || "Write failed")), 0, 0);
 
-      const path = getPathArg(context.args);
-      const content = typeof context.args?.content === "string" ? context.args.content : "";
-      const before = getObjectValue(result.details, "codePreviewBeforeWrite");
-      const beforeContent = getObjectValue(before, "content");
-      const skipReason = getWriteDiffSkipReason(before, content);
-      if (skipReason)
-        return new Text(
-          theme.fg("success", "✓ Write applied") +
-            theme.fg("muted", ` · diff skipped: ${skipReason}`),
-          0,
-          0,
-        );
-      if (typeof beforeContent === "string" && beforeContent !== content) {
-        if (shouldSkipWriteDiffBytes(beforeContent, content)) {
+        const path = getPathArg(renderContext.args);
+        const content =
+          typeof renderContext.args?.content === "string" ? renderContext.args.content : "";
+        const before = getObjectValue(result.details, "codePreviewBeforeWrite");
+        const beforeContent = getObjectValue(before, "content");
+        const skipReason = getWriteDiffSkipReason(before, content);
+        if (skipReason)
           return new Text(
             theme.fg("success", "✓ Write applied") +
-              theme.fg("muted", " · diff skipped for large content"),
+              theme.fg("muted", ` · diff skipped: ${skipReason}`),
             0,
             0,
           );
+        if (typeof beforeContent === "string" && beforeContent !== content) {
+          if (shouldSkipWriteDiffBytes(beforeContent, content)) {
+            return new Text(
+              theme.fg("success", "✓ Write applied") +
+                theme.fg("muted", " · diff skipped for large content"),
+              0,
+              0,
+            );
+          }
+          const render = () =>
+            renderWriteDiffPreview(
+              beforeContent,
+              content,
+              path,
+              expanded,
+              theme,
+              renderContext.invalidate,
+            );
+          const source = `${beforeContent}\0${content}`;
+          const previewKey = previewCacheKey("write-result", source, path, expanded, theme);
+          return cachedPreview(
+            renderContext.state,
+            "writeResultPreviewKey",
+            "writeResultPreviewComponent",
+            previewKey,
+            () =>
+              shouldRenderAsync(source)
+                ? new AsyncPreview("Rendering write diff…", theme, render, renderContext.invalidate)
+                : render(),
+          );
         }
-        const render = () =>
-          renderWriteDiffPreview(beforeContent, content, path, expanded, theme, context.invalidate);
-        const source = `${beforeContent}\0${content}`;
-        const previewKey = previewCacheKey("write-result", source, path, expanded, theme);
-        return cachedPreview(
-          context.state,
-          "writeResultPreviewKey",
-          "writeResultPreviewComponent",
-          previewKey,
-          () =>
-            shouldRenderAsync(source)
-              ? new AsyncPreview("Rendering write diff…", theme, render, context.invalidate)
-              : render(),
+        if (typeof beforeContent === "string")
+          return new Text(theme.fg("muted", "✓ Write applied · no changes"), 0, 0);
+        return new Text(
+          theme.fg("success", `✓ New file (${countLabel(countFileLines(content), "line")})`),
+          0,
+          0,
         );
-      }
-      if (typeof beforeContent === "string")
-        return new Text(theme.fg("muted", "✓ Write applied · no changes"), 0, 0);
-      return new Text(
-        theme.fg("success", `✓ New file (${countLabel(countFileLines(content), "line")})`),
-        0,
-        0,
-      );
+      });
     },
   });
 }

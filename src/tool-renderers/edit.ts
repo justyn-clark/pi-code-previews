@@ -18,102 +18,137 @@ import { codePreviewSettings } from "../settings.ts";
 import { shouldSkipHighlight } from "../shiki.ts";
 import { escapeControlChars } from "../terminal-text.ts";
 import { createSimpleDiff } from "../write-diff.ts";
-import { cachedPreview, previewArgsKey, previewCacheKey } from "./common.ts";
+import {
+  cachedPreview,
+  createCodePreviewToolShell,
+  previewArgsKey,
+  previewCacheKey,
+} from "./common.ts";
 
 export function registerEdit(pi: ExtensionAPI, cwd: string) {
   const originalEdit = createEditToolDefinition(cwd);
+  const previewShell = createCodePreviewToolShell();
 
   pi.registerTool({
     ...originalEdit,
-    // The built-in edit tool uses renderShell: "self". Override that so pi
-    // wraps our highlighted diff in the standard colored tool background.
-    renderShell: "default",
+    // The built-in edit tool uses renderShell: "self". Use the standard Pi box
+    // by default, or self-render when the user disables/reframes tool-call backgrounds.
+    renderShell: previewShell.renderShell,
 
     renderCall(args, theme, context) {
-      const path = getPathArg(args);
-      const operations = getEditPreviewOperations(args);
-      const operationsSource = editOperationsSource(operations);
-      const argsKey = previewArgsKey("edit-args", operationsSource, path);
-      if (context.state.editArgsKey !== argsKey) {
-        context.state.editArgsKey = argsKey;
-        context.state.editSummaryText = undefined;
-        context.state.editCallPreviewKey = undefined;
-        context.state.editCallPreviewComponent = undefined;
-      }
+      return previewShell.renderCall(context, theme, (renderContext) => {
+        const path = getPathArg(args);
+        const operations = getEditPreviewOperations(args);
+        const operationsSource = editOperationsSource(operations);
+        const argsKey = previewArgsKey("edit-args", operationsSource, path);
+        if (renderContext.state.editArgsKey !== argsKey) {
+          renderContext.state.editArgsKey = argsKey;
+          renderContext.state.editSummaryText = undefined;
+          renderContext.state.editCallPreviewKey = undefined;
+          renderContext.state.editCallPreviewComponent = undefined;
+        }
 
-      const text =
-        context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
-      context.state.editHeaderText = text;
-      text.setText(formatEditHeader(path, cwd, theme, context.state.editSummaryText));
+        const text =
+          renderContext.lastComponent instanceof Text
+            ? renderContext.lastComponent
+            : new Text("", 0, 0);
+        renderContext.state.editHeaderText = text;
+        text.setText(formatEditHeader(path, cwd, theme, renderContext.state.editSummaryText));
 
-      if (!context.argsComplete || operations.length === 0 || context.executionStarted) return text;
+        if (
+          !renderContext.argsComplete ||
+          operations.length === 0 ||
+          renderContext.executionStarted
+        )
+          return text;
 
-      const previewKey = previewCacheKey(
-        "edit-call",
-        operationsSource,
-        path,
-        context.expanded,
-        theme,
-      );
-      if (context.state.editCallPreviewKey !== previewKey) {
-        context.state.editCallPreviewKey = previewKey;
-        const render = () =>
-          renderEditCallPreview(operations, path, context.expanded, theme, context.invalidate);
-        context.state.editCallPreviewComponent = shouldRenderAsync(operationsSource)
-          ? new AsyncPreview("Rendering proposed edit diff…", theme, render, context.invalidate)
-          : render();
-      }
-      return new HeaderAndBody(text, context.state.editCallPreviewComponent as Component);
+        const previewKey = previewCacheKey(
+          "edit-call",
+          operationsSource,
+          path,
+          renderContext.expanded,
+          theme,
+        );
+        if (renderContext.state.editCallPreviewKey !== previewKey) {
+          renderContext.state.editCallPreviewKey = previewKey;
+          const render = () =>
+            renderEditCallPreview(
+              operations,
+              path,
+              renderContext.expanded,
+              theme,
+              renderContext.invalidate,
+            );
+          renderContext.state.editCallPreviewComponent = shouldRenderAsync(operationsSource)
+            ? new AsyncPreview(
+                "Rendering proposed edit diff…",
+                theme,
+                render,
+                renderContext.invalidate,
+              )
+            : render();
+        }
+        return new HeaderAndBody(text, renderContext.state.editCallPreviewComponent as Component);
+      });
     },
 
     renderResult(result, { expanded, isPartial }, theme, context) {
-      if (isPartial) return new Text(theme.fg("warning", "Editing…"), 0, 0);
+      return previewShell.renderResult(context, theme, (renderContext) => {
+        if (isPartial) return new Text(theme.fg("warning", "Editing…"), 0, 0);
 
-      const firstText = getTextContent(result.content);
-      if (context.isError) {
-        context.state.editSummaryText = undefined;
-        updateEditHeader(context, cwd, theme);
-        return new Text(
-          theme.fg("error", escapeControlChars(firstText.split("\n")[0] || "Edit failed")),
-          0,
-          0,
+        const firstText = getTextContent(result.content);
+        if (renderContext.isError) {
+          renderContext.state.editSummaryText = undefined;
+          updateEditHeader(renderContext, cwd, theme);
+          return new Text(
+            theme.fg("error", escapeControlChars(firstText.split("\n")[0] || "Edit failed")),
+            0,
+            0,
+          );
+        }
+
+        const diff = getEditDiff(result.details);
+        if (!diff) {
+          renderContext.state.editSummaryText = `${theme.fg("success", "✓ Edit applied")}${theme.fg("muted", " · no diff")}`;
+          updateEditHeader(renderContext, cwd, theme);
+          return new Container();
+        }
+
+        const filePath = getPathArg(renderContext.args);
+        const lang = resolvePreviewLanguage({
+          path: filePath,
+          piLanguage: getLanguageFromPath(filePath),
+        });
+        const summary = summarizeDiff(diff);
+        const limit =
+          expanded || codePreviewSettings.editCollapsedLines === "all"
+            ? summary.totalLines
+            : codePreviewSettings.editCollapsedLines;
+        renderContext.state.editSummaryText = formatEditSummary(summary, limit, theme);
+        if (!expanded && summary.totalLines > limit)
+          renderContext.state.editSummaryText += ` (${themedKeyHint(theme, "app.tools.expand", "expand")})`;
+        updateEditHeader(renderContext, cwd, theme);
+        const render = () =>
+          renderEditDiffPreview(
+            diff,
+            lang,
+            limit,
+            summary.totalLines,
+            theme,
+            renderContext.invalidate,
+          );
+        const previewKey = previewCacheKey("edit-result", diff, filePath, expanded, theme);
+        return cachedPreview(
+          renderContext.state,
+          "editResultPreviewKey",
+          "editResultPreviewComponent",
+          previewKey,
+          () =>
+            shouldRenderAsync(diff)
+              ? new AsyncPreview("Rendering edit diff…", theme, render, renderContext.invalidate)
+              : render(),
         );
-      }
-
-      const diff = getEditDiff(result.details);
-      if (!diff) {
-        context.state.editSummaryText = `${theme.fg("success", "✓ Edit applied")}${theme.fg("muted", " · no diff")}`;
-        updateEditHeader(context, cwd, theme);
-        return new Container();
-      }
-
-      const filePath = getPathArg(context.args);
-      const lang = resolvePreviewLanguage({
-        path: filePath,
-        piLanguage: getLanguageFromPath(filePath),
       });
-      const summary = summarizeDiff(diff);
-      const limit =
-        expanded || codePreviewSettings.editCollapsedLines === "all"
-          ? summary.totalLines
-          : codePreviewSettings.editCollapsedLines;
-      context.state.editSummaryText = formatEditSummary(summary, limit, theme);
-      if (!expanded && summary.totalLines > limit)
-        context.state.editSummaryText += ` (${themedKeyHint(theme, "app.tools.expand", "expand")})`;
-      updateEditHeader(context, cwd, theme);
-      const render = () =>
-        renderEditDiffPreview(diff, lang, limit, summary.totalLines, theme, context.invalidate);
-      const previewKey = previewCacheKey("edit-result", diff, filePath, expanded, theme);
-      return cachedPreview(
-        context.state,
-        "editResultPreviewKey",
-        "editResultPreviewComponent",
-        previewKey,
-        () =>
-          shouldRenderAsync(diff)
-            ? new AsyncPreview("Rendering edit diff…", theme, render, context.invalidate)
-            : render(),
-      );
     },
   });
 }

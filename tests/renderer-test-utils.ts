@@ -7,6 +7,7 @@ export type RegisteredRenderer = {
   name: string;
   renderCall?: (...args: unknown[]) => Component;
   renderResult?: (...args: unknown[]) => Component;
+  renderShell?: "default" | "self";
   prepareArguments?: (args: unknown) => unknown;
   promptSnippet?: string;
   promptGuidelines?: string[];

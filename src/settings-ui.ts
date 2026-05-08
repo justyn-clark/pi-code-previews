@@ -59,6 +59,14 @@ export function createSettingsItems(current: CodePreviewSettings): SettingItem[]
       submenu: (currentValue, done) => new ToolPreviewSettingsSubmenu(currentValue, done),
     },
     {
+      id: "toolCallBackground",
+      label: "Tool call background",
+      description:
+        "Choose Pi's default colored background, no frame, or a border-only frame. Changes take effect after /reload.",
+      currentValue: formatSettingValue(current, "toolCallBackground"),
+      values: ["on", "border", "off"],
+    },
+    {
       id: "readContentPreview",
       label: "Read content preview",
       description:
