@@ -52,6 +52,12 @@ test("extractCodePreviewSettings accepts nested, prefixed, and saved raw setting
   assert.deepEqual(extractCodePreviewSettings({ codePreviewReadContentPreview: false }), {
     readContentPreview: false,
   });
+  assert.deepEqual(extractCodePreviewSettings({ codePreviewWriteContentPreview: false }), {
+    writeContentPreview: false,
+  });
+  assert.deepEqual(extractCodePreviewSettings({ codePreviewEditDiffPreview: false }), {
+    editDiffPreview: false,
+  });
   assert.deepEqual(extractCodePreviewSettings({ codePreviewGrepResultPreview: false }), {
     grepResultPreview: false,
   });
@@ -95,10 +101,14 @@ test("loadSettingsFromDisk merges settings in precedence order", async () => {
   process.chdir(project);
 
   await writeJson(join(home, ".pi", "settings.json"), {
-    codePreview: { readCollapsedLines: 11, writeCollapsedLines: 21 },
+    codePreview: {
+      readCollapsedLines: 11,
+      writeCollapsedLines: 21,
+      writeContentPreview: false,
+    },
   });
   await writeJson(join(home, ".pi", "agent", "settings.json"), {
-    codePreview: { readCollapsedLines: 12, grepCollapsedLines: 22 },
+    codePreview: { readCollapsedLines: 12, editDiffPreview: false, grepCollapsedLines: 22 },
   });
   await writeJson(join(agentDir, "settings.json"), {
     codePreview: { readCollapsedLines: 13, findResultPreview: false },
@@ -118,6 +128,8 @@ test("loadSettingsFromDisk merges settings in precedence order", async () => {
   const loaded = await loadSettingsFromDisk();
   assert.equal(loaded?.readCollapsedLines, 16);
   assert.equal(loaded?.writeCollapsedLines, 21);
+  assert.equal(loaded?.writeContentPreview, false);
+  assert.equal(loaded?.editDiffPreview, false);
   assert.equal(loaded?.grepCollapsedLines, 22);
   assert.equal(loaded?.findResultPreview, false);
   assert.equal(loaded?.lsResultPreview, false);

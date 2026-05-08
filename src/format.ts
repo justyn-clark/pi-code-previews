@@ -131,10 +131,10 @@ export function themedKeyHint(
   return theme.fg("dim", keyText) + theme.fg("muted", ` ${description}`);
 }
 
-export function hiddenPreviewExpandHint(theme: Theme): string {
+export function hiddenPreviewExpandHint(theme: Theme, subject = "output"): string {
   return theme.fg(
     "muted",
-    `╰─ output hidden - ${themedKeyHint(theme, "app.tools.expand", "expand")}`,
+    `╰─ ${subject} hidden - ${themedKeyHint(theme, "app.tools.expand", "expand")}`,
   );
 }
 

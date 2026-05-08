@@ -10,7 +10,14 @@ import {
   summarizeDiff,
 } from "../diff.ts";
 import { describeDiffShape, diffSummarySeparator } from "../diff-summary.ts";
-import { countLabel, formatBytes, metadata, previewFooter, showingFooter } from "../format.ts";
+import {
+  countLabel,
+  formatBytes,
+  hiddenPreviewExpandHint,
+  metadata,
+  previewFooter,
+  showingFooter,
+} from "../format.ts";
 import { resolvePreviewLanguage } from "../language.ts";
 import { renderDisplayPath } from "../paths.ts";
 import { codePreviewSettings } from "../settings.ts";
@@ -52,6 +59,24 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       return previewShell.renderCall(context, theme, (renderContext) => {
         const path = getPathArg(args);
         const content = typeof args.content === "string" ? args.content : "";
+        const lang = resolvePreviewLanguage({
+          path,
+          content,
+          piLanguage: getLanguageFromPath(path),
+        });
+        if (!renderContext.expanded && !codePreviewSettings.writeContentPreview)
+          return new Text(
+            `${formatWriteCallHeader(
+              content,
+              path,
+              cwd,
+              theme,
+              lang,
+              countFileLines(content),
+            )}\n${hiddenPreviewExpandHint(theme, "code preview")}`,
+            0,
+            0,
+          );
         const previewKey = `${previewCacheKey(
           "write-call",
           content,
@@ -82,6 +107,9 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
         const firstText = getTextContent(result.content);
         if (renderContext.isError)
           return new Text(theme.fg("error", escapeControlChars(firstText || "Write failed")), 0, 0);
+
+        if (!expanded && !codePreviewSettings.writeContentPreview)
+          return new Text(hiddenPreviewExpandHint(theme, "code preview"), 0, 0);
 
         const path = getPathArg(renderContext.args);
         const content =
@@ -143,6 +171,7 @@ function writeCallPreviewSettingsKey(): string {
   const shikiStatus = getShikiStatus();
   return [
     String(codePreviewSettings.writeCollapsedLines),
+    codePreviewSettings.writeContentPreview ? "write-preview" : "no-write-preview",
     codePreviewSettings.secretWarnings ? "secret-warnings" : "no-secret-warnings",
     shikiStatus.initialized ? "shiki-ready" : "shiki-loading",
     String(shikiStatus.loadedLanguages),
@@ -174,12 +203,7 @@ function renderWriteCallPreview(
     invalidate,
   );
 
-  let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
-  text += metadata(theme, [
-    formatBytes(Buffer.byteLength(content, "utf8")),
-    countLabel(preview.total, "line"),
-    lang ? normalizeShikiLanguage(lang) : undefined,
-  ]);
+  let text = formatWriteCallHeader(content, path, cwd, theme, lang, preview.total);
   const contentPreview = preview.lines.length
     ? withSecretWarning(content, theme, preview.lines.join("\n"))
     : theme.fg("muted", "Empty content");
@@ -187,6 +211,23 @@ function renderWriteCallPreview(
   if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
   if (skipHighlight) text += previewFooter(theme, "Syntax highlighting skipped for large content");
   return new Text(text, 0, 0);
+}
+
+function formatWriteCallHeader(
+  content: string,
+  path: string,
+  cwd: string,
+  theme: Theme,
+  lang: string | undefined,
+  lineCount: number,
+): string {
+  let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
+  text += metadata(theme, [
+    formatBytes(Buffer.byteLength(content, "utf8")),
+    countLabel(lineCount, "line"),
+    lang ? normalizeShikiLanguage(lang) : undefined,
+  ]);
+  return text;
 }
 
 function renderWriteDiffPreview(

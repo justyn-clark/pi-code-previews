@@ -11,7 +11,13 @@ import {
   summarizeDiff,
 } from "../diff.ts";
 import { diffSummarySeparator, type DiffSummary } from "../diff-summary.ts";
-import { countLabel, previewFooter, showingFooter, themedKeyHint } from "../format.ts";
+import {
+  countLabel,
+  hiddenPreviewExpandHint,
+  previewFooter,
+  showingFooter,
+  themedKeyHint,
+} from "../format.ts";
 import { resolvePreviewLanguage } from "../language.ts";
 import { renderDisplayPath } from "../paths.ts";
 import { codePreviewSettings } from "../settings.ts";
@@ -61,6 +67,12 @@ export function registerEdit(pi: ExtensionAPI, cwd: string) {
           renderContext.executionStarted
         )
           return text;
+
+        if (!renderContext.expanded && !codePreviewSettings.editDiffPreview)
+          return new HeaderAndBody(
+            text,
+            new Text(hiddenPreviewExpandHint(theme, "diff preview"), 0, 0),
+          );
 
         const previewKey = previewCacheKey(
           "edit-call",
@@ -120,14 +132,16 @@ export function registerEdit(pi: ExtensionAPI, cwd: string) {
           piLanguage: getLanguageFromPath(filePath),
         });
         const summary = summarizeDiff(diff);
+        const hidePreview = !expanded && !codePreviewSettings.editDiffPreview;
         const limit =
-          expanded || codePreviewSettings.editCollapsedLines === "all"
+          expanded || hidePreview || codePreviewSettings.editCollapsedLines === "all"
             ? summary.totalLines
             : codePreviewSettings.editCollapsedLines;
         renderContext.state.editSummaryText = formatEditSummary(summary, limit, theme);
-        if (!expanded && summary.totalLines > limit)
+        if (!expanded && (hidePreview || summary.totalLines > limit))
           renderContext.state.editSummaryText += ` (${themedKeyHint(theme, "app.tools.expand", "expand")})`;
         updateEditHeader(renderContext, cwd, theme);
+        if (hidePreview) return new Text(hiddenPreviewExpandHint(theme, "diff preview"), 0, 0);
         const render = () =>
           renderEditDiffPreview(
             diff,

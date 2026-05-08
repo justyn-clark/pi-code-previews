@@ -119,6 +119,182 @@ test("registered edit timing measures execution start to result completion", () 
   }
 });
 
+test("registered write renderer hides code previews until expanded", () => {
+  process.env.CODE_PREVIEW_TOOLS = "write";
+  const previousSettings = cloneCodePreviewSettingsForTest();
+  setCodePreviewSettings({ ...codePreviewSettings, writeContentPreview: false });
+  try {
+    const write = findRenderer(registerRenderers(), "write");
+    assert.ok(write.renderCall);
+    assert.ok(write.renderResult);
+
+    const args = { path: "src/a.ts", content: "const after = 2;\n" };
+    const collapsedCall = stripAnsi(
+      renderComponent(
+        write.renderCall(args, testTheme(), {
+          argsComplete: true,
+          cwd: "/tmp/project",
+          executionStarted: false,
+          expanded: false,
+          invalidate: () => undefined,
+          isError: false,
+          isPartial: true,
+          lastComponent: undefined,
+          showImages: true,
+          state: {},
+          toolCallId: "tool-1",
+        }),
+      ),
+    );
+    assert.match(collapsedCall, /write src\/a\.ts/);
+    assert.match(collapsedCall, /expand/);
+    assert.doesNotMatch(collapsedCall, /const after = 2/);
+
+    const expandedCall = stripAnsi(
+      renderComponent(
+        write.renderCall(args, testTheme(), {
+          argsComplete: true,
+          cwd: "/tmp/project",
+          executionStarted: false,
+          expanded: true,
+          invalidate: () => undefined,
+          isError: false,
+          isPartial: true,
+          lastComponent: undefined,
+          showImages: true,
+          state: {},
+          toolCallId: "tool-1",
+        }),
+      ),
+    );
+    assert.match(expandedCall, /const after = 2/);
+
+    const collapsedResult = stripAnsi(
+      renderComponent(
+        write.renderResult(
+          {
+            content: [{ type: "text", text: "ok" }],
+            details: {
+              codePreviewBeforeWrite: { kind: "content", content: "const before = 1;\n" },
+            },
+          },
+          { expanded: false, isPartial: false },
+          testTheme(),
+          {
+            args,
+            isError: false,
+            invalidate: () => undefined,
+            state: {},
+          },
+        ),
+      ),
+    );
+    assert.match(collapsedResult, /expand/);
+    assert.doesNotMatch(collapsedResult, /const after = 2/);
+
+    const expandedResult = stripAnsi(
+      renderComponent(
+        write.renderResult(
+          {
+            content: [{ type: "text", text: "ok" }],
+            details: {
+              codePreviewBeforeWrite: { kind: "content", content: "const before = 1;\n" },
+            },
+          },
+          { expanded: true, isPartial: false },
+          testTheme(),
+          {
+            args,
+            isError: false,
+            invalidate: () => undefined,
+            state: {},
+          },
+        ),
+      ),
+    );
+    assert.match(expandedResult, /const after = 2/);
+  } finally {
+    setCodePreviewSettings(previousSettings);
+  }
+});
+
+test("registered edit renderer hides diff previews until expanded", () => {
+  process.env.CODE_PREVIEW_TOOLS = "edit";
+  const previousSettings = cloneCodePreviewSettingsForTest();
+  setCodePreviewSettings({ ...codePreviewSettings, editDiffPreview: false });
+  try {
+    const edit = findRenderer(registerRenderers(), "edit");
+    assert.ok(edit.renderCall);
+    assert.ok(edit.renderResult);
+
+    const args = {
+      path: "src/a.ts",
+      edits: [{ oldText: "const value = 1;", newText: "const value = 2;" }],
+    };
+    const collapsedCall = stripAnsi(
+      renderComponent(
+        edit.renderCall(args, testTheme(), {
+          argsComplete: true,
+          expanded: false,
+          executionStarted: false,
+          lastComponent: undefined,
+          state: {},
+          invalidate: () => undefined,
+        }),
+      ),
+    );
+    assert.match(collapsedCall, /edit src\/a\.ts/);
+    assert.match(collapsedCall, /expand/);
+    assert.doesNotMatch(collapsedCall, /const value = 2/);
+
+    const expandedCall = stripAnsi(
+      renderComponent(
+        edit.renderCall(args, testTheme(), {
+          argsComplete: true,
+          expanded: true,
+          executionStarted: false,
+          lastComponent: undefined,
+          state: {},
+          invalidate: () => undefined,
+        }),
+      ),
+    );
+    assert.match(expandedCall, /proposed edit/);
+    assert.match(expandedCall, /const value = 2/);
+
+    const result = {
+      content: [{ type: "text", text: "ok" }],
+      details: { diff: "-const value = 1;\n+const value = 2;" },
+    };
+    const collapsedResult = stripAnsi(
+      renderComponent(
+        edit.renderResult(result, { expanded: false, isPartial: false }, testTheme(), {
+          args: { path: "src/a.ts" },
+          isError: false,
+          invalidate: () => undefined,
+          state: {},
+        }),
+      ),
+    );
+    assert.match(collapsedResult, /expand/);
+    assert.doesNotMatch(collapsedResult, /const value = 2/);
+
+    const expandedResult = stripAnsi(
+      renderComponent(
+        edit.renderResult(result, { expanded: true, isPartial: false }, testTheme(), {
+          args: { path: "src/a.ts" },
+          isError: false,
+          invalidate: () => undefined,
+          state: {},
+        }),
+      ),
+    );
+    assert.match(expandedResult, /const value = 2/);
+  } finally {
+    setCodePreviewSettings(previousSettings);
+  }
+});
+
 test("registered write call reuses cached previews", () => {
   process.env.CODE_PREVIEW_TOOLS = "write";
   const write = findRenderer(registerRenderers(), "write");

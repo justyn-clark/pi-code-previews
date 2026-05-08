@@ -23,6 +23,8 @@ test("settings normalization and reset preserve defaults", () => {
     toolCallBackground: false,
     toolCallTiming: false,
     readContentPreview: false,
+    writeContentPreview: false,
+    editDiffPreview: false,
     grepResultPreview: false,
     findResultPreview: false,
     lsResultPreview: false,
@@ -36,12 +38,14 @@ test("settings normalization and reset preserve defaults", () => {
   assert.equal(normalized.toolCallBackground, "off");
   assert.equal(normalized.toolCallTiming, false);
   assert.equal(normalized.readContentPreview, false);
+  assert.equal(normalized.writeContentPreview, false);
+  assert.equal(normalized.editDiffPreview, false);
   assert.equal(normalized.grepResultPreview, false);
   assert.equal(normalized.findResultPreview, false);
   assert.equal(normalized.lsResultPreview, false);
   assert.equal(normalized.wordEmphasis, defaultCodePreviewSettings.wordEmphasis);
   assert.equal(normalized.readCollapsedLines, defaultCodePreviewSettings.readCollapsedLines);
-  assert.deepEqual(normalized.tools, ["bash", "read", "write", "grep", "find", "ls"]);
+  assert.deepEqual(normalized.tools, ["bash", "read", "write", "edit", "grep", "find", "ls"]);
   assert.deepEqual(
     updateSetting(normalized, "resetToDefaults", "reset now"),
     defaultCodePreviewSettings,
@@ -69,6 +73,11 @@ test("settings normalization falls back to accumulated settings for invalid over
   assert.equal(validOverride.readCollapsedLines, 20);
   assert.equal(updateSetting(validOverride, "wordEmphasis", "all").wordEmphasis, "all");
   assert.equal(updateSetting(validOverride, "readContentPreview", "off").readContentPreview, false);
+  assert.equal(
+    updateSetting(validOverride, "writeContentPreview", "off").writeContentPreview,
+    false,
+  );
+  assert.equal(updateSetting(validOverride, "editDiffPreview", "off").editDiffPreview, false);
   assert.equal(updateSetting(validOverride, "grepResultPreview", "off").grepResultPreview, false);
   assert.equal(updateSetting(validOverride, "findResultPreview", "off").findResultPreview, false);
   assert.equal(updateSetting(validOverride, "lsResultPreview", "off").lsResultPreview, false);
@@ -103,10 +112,12 @@ test("setCodePreviewSettings updates existing settings object references", () =>
   }
 });
 
-test("disabled result previews keep corresponding tool renderers enabled", () => {
+test("disabled preview settings keep corresponding tool renderers enabled", () => {
   const normalized = normalizeSettings(
     {
       readContentPreview: false,
+      writeContentPreview: false,
+      editDiffPreview: false,
       bashResultPreview: false,
       grepResultPreview: false,
       findResultPreview: false,
@@ -115,7 +126,7 @@ test("disabled result previews keep corresponding tool renderers enabled", () =>
     },
     defaultCodePreviewSettings,
   );
-  assert.deepEqual(normalized.tools, ["bash", "read", "grep", "find", "ls"]);
+  assert.deepEqual(normalized.tools, ["bash", "read", "write", "edit", "grep", "find", "ls"]);
 
   const withoutGrep = updateSetting(
     { ...normalized, tools: normalized.tools.filter((tool) => tool !== "grep") },
@@ -177,8 +188,16 @@ test("settings UI item values are handled by updateSetting", () => {
     20,
   );
   assert.equal(
+    updateSetting(defaultCodePreviewSettings, "writeContentPreview", "off").writeContentPreview,
+    false,
+  );
+  assert.equal(
     updateSetting(defaultCodePreviewSettings, "writeCollapsedLines", "20").writeCollapsedLines,
     20,
+  );
+  assert.equal(
+    updateSetting(defaultCodePreviewSettings, "editDiffPreview", "off").editDiffPreview,
+    false,
   );
   assert.equal(
     updateSetting(defaultCodePreviewSettings, "editCollapsedLines", "all").editCollapsedLines,
@@ -244,16 +263,9 @@ test("settings category UI keeps the top level compact", () => {
   );
   assert.deepEqual(
     items.map((item) => item.label),
-    [
-      "Appearance",
-      "Diff previews",
-      "Output previews",
-      "Enabled tools",
-      "Warnings & safety",
-      "Advanced",
-    ],
+    ["Appearance", "Output previews", "Enabled tools", "Warnings & safety", "Advanced"],
   );
-  assert.equal(items.filter((item) => isSettingsGroupItemId(item.id)).length, 5);
+  assert.equal(items.filter((item) => isSettingsGroupItemId(item.id)).length, 4);
   assert.equal(items.find((item) => item.id === "tools")?.currentValue, "all tools");
 });
 

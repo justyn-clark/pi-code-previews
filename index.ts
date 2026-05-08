@@ -44,6 +44,8 @@ export default async function codePreviews(pi: ExtensionAPI) {
         `Tool call background: ${codePreviewSettings.toolCallBackground}`,
         `Tool call timing: ${onOff(codePreviewSettings.toolCallTiming)}`,
         `Read content preview: ${onOff(codePreviewSettings.readContentPreview)}`,
+        `Write content preview: ${onOff(codePreviewSettings.writeContentPreview)}`,
+        `Edit diff preview: ${onOff(codePreviewSettings.editDiffPreview)}`,
         `Grep result preview: ${onOff(codePreviewSettings.grepResultPreview)}`,
         `Find result preview: ${onOff(codePreviewSettings.findResultPreview)}`,
         `Ls result preview: ${onOff(codePreviewSettings.lsResultPreview)}`,

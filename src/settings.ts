@@ -21,7 +21,9 @@ export interface CodePreviewSettings {
   toolCallTiming: boolean;
   readCollapsedLines: number;
   readContentPreview: boolean;
+  writeContentPreview: boolean;
   writeCollapsedLines: number;
+  editDiffPreview: boolean;
   editCollapsedLines: number | "all";
   grepCollapsedLines: number;
   grepResultPreview: boolean;
@@ -45,7 +47,9 @@ export const defaultCodePreviewSettings: CodePreviewSettings = {
   toolCallTiming: envBoolean("CODE_PREVIEW_TOOL_CALL_TIMING", true),
   readCollapsedLines: positiveEnvInteger("CODE_PREVIEW_READ_LINES", 10),
   readContentPreview: envBoolean("CODE_PREVIEW_READ_CONTENT", true),
+  writeContentPreview: envBoolean("CODE_PREVIEW_WRITE_CONTENT", true),
   writeCollapsedLines: positiveEnvInteger("CODE_PREVIEW_WRITE_LINES", 10),
+  editDiffPreview: envBoolean("CODE_PREVIEW_EDIT_DIFF", true),
   editCollapsedLines: envEditLines("CODE_PREVIEW_EDIT_LINES", 160),
   grepCollapsedLines: positiveEnvInteger("CODE_PREVIEW_GREP_LINES", 15),
   grepResultPreview: envBoolean("CODE_PREVIEW_GREP_RESULTS", true),
@@ -104,6 +108,8 @@ export function normalizeSettings(
   const toolCallBackground = getObjectValue(data, "toolCallBackground");
   const toolCallTiming = getObjectValue(data, "toolCallTiming");
   const readContentPreview = getObjectValue(data, "readContentPreview");
+  const writeContentPreview = getObjectValue(data, "writeContentPreview");
+  const editDiffPreview = getObjectValue(data, "editDiffPreview");
   const grepResultPreview = getObjectValue(data, "grepResultPreview");
   const findResultPreview = getObjectValue(data, "findResultPreview");
   const lsResultPreview = getObjectValue(data, "lsResultPreview");
@@ -130,10 +136,14 @@ export function normalizeSettings(
     ),
     readContentPreview:
       typeof readContentPreview === "boolean" ? readContentPreview : fallback.readContentPreview,
+    writeContentPreview:
+      typeof writeContentPreview === "boolean" ? writeContentPreview : fallback.writeContentPreview,
     writeCollapsedLines: coerceNumber(
       getObjectValue(data, "writeCollapsedLines"),
       fallback.writeCollapsedLines,
     ),
+    editDiffPreview:
+      typeof editDiffPreview === "boolean" ? editDiffPreview : fallback.editDiffPreview,
     editCollapsedLines: coerceEditPreviewLines(
       getObjectValue(data, "editCollapsedLines"),
       fallback.editCollapsedLines,
@@ -193,8 +203,14 @@ const SETTING_UPDATERS = {
   readContentPreview: (next, _current, value) => {
     next.readContentPreview = value === "on";
   },
+  writeContentPreview: (next, _current, value) => {
+    next.writeContentPreview = value === "on";
+  },
   writeCollapsedLines: (next, current, value) => {
     next.writeCollapsedLines = coerceStringNumber(value, current.writeCollapsedLines);
+  },
+  editDiffPreview: (next, _current, value) => {
+    next.editDiffPreview = value === "on";
   },
   editCollapsedLines: (next, current, value) => {
     next.editCollapsedLines =
@@ -355,6 +371,8 @@ export function getRequiredCodePreviewTools(
 ): Set<CodePreviewToolName> {
   const tools = new Set<CodePreviewToolName>();
   if (!settings.readContentPreview) tools.add("read");
+  if (!settings.writeContentPreview) tools.add("write");
+  if (!settings.editDiffPreview) tools.add("edit");
   if (!settings.grepResultPreview) tools.add("grep");
   if (!settings.findResultPreview) tools.add("find");
   if (!settings.lsResultPreview) tools.add("ls");

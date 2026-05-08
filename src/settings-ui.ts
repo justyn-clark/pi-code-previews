@@ -42,7 +42,9 @@ const FLAT_SETTING_IDS = [
   "toolCallTiming",
   "readContentPreview",
   "readCollapsedLines",
+  "writeContentPreview",
   "writeCollapsedLines",
+  "editDiffPreview",
   "editCollapsedLines",
   "grepResultPreview",
   "grepCollapsedLines",
@@ -71,6 +73,7 @@ const APPEARANCE_SETTING_IDS = [
 const DIFF_PREVIEW_SETTING_IDS = [
   "diffIntensity",
   "wordEmphasis",
+  "editDiffPreview",
   "editCollapsedLines",
 ] as const satisfies readonly SettingsUiItemId[];
 
@@ -80,6 +83,7 @@ const READ_PREVIEW_SETTING_IDS = [
 ] as const satisfies readonly SettingsUiItemId[];
 
 const WRITE_PREVIEW_SETTING_IDS = [
+  "writeContentPreview",
   "writeCollapsedLines",
 ] as const satisfies readonly SettingsUiItemId[];
 
@@ -131,29 +135,14 @@ export function createSettingsCategoryItems(
         }),
     },
     {
-      id: groupId("diffPreviews"),
-      label: "Diff previews",
-      description: "Controls for edit diff backgrounds, word emphasis, and collapsed size.",
-      currentValue: summarizeDiffPreviews(current),
-      submenu: (_currentValue, done) =>
-        new SettingsGroupSubmenu({
-          title: "Diff previews",
-          description: "Controls for edit diff backgrounds, word emphasis, and collapsed size.",
-          items: () => createSettingListItems(getCurrent(), DIFF_PREVIEW_SETTING_IDS),
-          onChange: onSettingChange,
-          done,
-          summary: () => summarizeDiffPreviews(getCurrent()),
-        }),
-    },
-    {
       id: groupId("outputPreviews"),
       label: "Output previews",
-      description: "Collapsed output visibility and preview lengths by tool family.",
+      description: "Collapsed output/code visibility and preview lengths by tool family.",
       currentValue: summarizeOutputPreviews(current),
       submenu: (_currentValue, done) =>
         new SettingsGroupSubmenu({
           title: "Output previews",
-          description: "Collapsed output visibility and preview lengths by tool family.",
+          description: "Collapsed output/code visibility and preview lengths by tool family.",
           items: () => createOutputPreviewItems(getCurrent(), getCurrent, onSettingChange),
           onChange: onSettingChange,
           done,
@@ -230,16 +219,31 @@ function createOutputPreviewItems(
     {
       id: groupId("writePreviews"),
       label: "Write previews",
-      description: "Collapsed write content size.",
+      description: "Write content/diff visibility and collapsed write content size.",
       currentValue: summarizeWritePreviews(current),
       submenu: (_currentValue, done) =>
         new SettingsGroupSubmenu({
           title: "Write previews",
-          description: "Collapsed write content size.",
+          description: "Write content/diff visibility and collapsed write content size.",
           items: () => createSettingListItems(getCurrent(), WRITE_PREVIEW_SETTING_IDS),
           onChange: onSettingChange,
           done,
           summary: () => summarizeWritePreviews(getCurrent()),
+        }),
+    },
+    {
+      id: groupId("diffPreviews"),
+      label: "Edit diff previews",
+      description: "Edit diff visibility, backgrounds, word emphasis, and collapsed size.",
+      currentValue: summarizeDiffPreviews(current),
+      submenu: (_currentValue, done) =>
+        new SettingsGroupSubmenu({
+          title: "Edit diff previews",
+          description: "Edit diff visibility, backgrounds, word emphasis, and collapsed size.",
+          items: () => createSettingListItems(getCurrent(), DIFF_PREVIEW_SETTING_IDS),
+          onChange: onSettingChange,
+          done,
+          summary: () => summarizeDiffPreviews(getCurrent()),
         }),
     },
     {
@@ -353,6 +357,15 @@ function createSettingItem(current: CodePreviewSettings, id: SettingsUiItemId): 
         currentValue: formatSettingValue(current, id),
         values: ["10", "20", "40", "80"],
       };
+    case "writeContentPreview":
+      return {
+        id,
+        label: "Write code preview",
+        description:
+          "Show write content and write diffs. Turn off to hide collapsed code previews while still allowing expanded output.",
+        currentValue: formatSettingValue(current, id),
+        values: ["on", "off"],
+      };
     case "writeCollapsedLines":
       return {
         id,
@@ -360,6 +373,15 @@ function createSettingItem(current: CodePreviewSettings, id: SettingsUiItemId): 
         description: "Maximum write content lines shown before collapsing.",
         currentValue: formatSettingValue(current, id),
         values: ["10", "20", "40", "80"],
+      };
+    case "editDiffPreview":
+      return {
+        id,
+        label: "Edit diff preview",
+        description:
+          "Show proposed and applied edit diffs. Turn off to hide collapsed diff previews while still allowing expanded output.",
+        currentValue: formatSettingValue(current, id),
+        values: ["on", "off"],
       };
     case "editCollapsedLines":
       return {
@@ -642,11 +664,11 @@ function summarizeAppearance(settings: CodePreviewSettings): string {
 }
 
 function summarizeDiffPreviews(settings: CodePreviewSettings): string {
-  return `${settings.diffIntensity} bg · words ${settings.wordEmphasis}`;
+  return `${onOff(settings.editDiffPreview)} · ${settings.diffIntensity} bg · words ${settings.wordEmphasis}`;
 }
 
 function summarizeOutputPreviews(settings: CodePreviewSettings): string {
-  return `read ${onOff(settings.readContentPreview)} · bash ${onOff(settings.bashResultPreview)}`;
+  return `read ${onOff(settings.readContentPreview)} · write ${onOff(settings.writeContentPreview)} · edit ${onOff(settings.editDiffPreview)} · bash ${onOff(settings.bashResultPreview)}`;
 }
 
 function summarizeReadPreviews(settings: CodePreviewSettings): string {
@@ -654,7 +676,7 @@ function summarizeReadPreviews(settings: CodePreviewSettings): string {
 }
 
 function summarizeWritePreviews(settings: CodePreviewSettings): string {
-  return `${settings.writeCollapsedLines} lines`;
+  return `${onOff(settings.writeContentPreview)} · ${settings.writeCollapsedLines} lines`;
 }
 
 function summarizeSearchListPreviews(settings: CodePreviewSettings): string {
