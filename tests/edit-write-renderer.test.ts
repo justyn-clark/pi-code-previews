@@ -119,6 +119,43 @@ test("registered edit timing measures execution start to result completion", () 
   }
 });
 
+test("registered write call reuses cached previews", () => {
+  process.env.CODE_PREVIEW_TOOLS = "write";
+  const write = findRenderer(registerRenderers(), "write");
+  assert.ok(write.renderCall);
+  const args = { path: "src/a.ts", content: "const value = 1;\n" };
+  const state = {};
+  const theme = testTheme();
+  const first = write.renderCall(args, theme, {
+    argsComplete: true,
+    cwd: "/tmp/project",
+    executionStarted: false,
+    expanded: false,
+    invalidate: () => undefined,
+    isError: false,
+    isPartial: true,
+    lastComponent: undefined,
+    showImages: true,
+    state,
+    toolCallId: "tool-1",
+  });
+  const second = write.renderCall(args, theme, {
+    argsComplete: true,
+    cwd: "/tmp/project",
+    executionStarted: false,
+    expanded: false,
+    invalidate: () => undefined,
+    isError: false,
+    isPartial: true,
+    lastComponent: first,
+    showImages: true,
+    state,
+    toolCallId: "tool-1",
+  });
+
+  assert.equal(second, first);
+});
+
 test("registered edit result header omits insertion and deletion shape counts", () => {
   process.env.CODE_PREVIEW_TOOLS = "edit";
   const edit = findRenderer(registerRenderers(), "edit");

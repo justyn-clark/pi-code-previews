@@ -23,6 +23,9 @@ afterEach(() => {
 });
 
 test("summarizeDiff classifies replacements, insertions, and deletions by change group", () => {
+  assert.equal(summarizeDiff("").totalLines, 1);
+  assert.equal(summarizeDiff("+ 1 added\n").totalLines, 2);
+
   const balanced = summarizeDiff("- 1 old\n- 2 old\n+ 1 new\n+ 2 new");
   assert.equal(balanced.additions, 2);
   assert.equal(balanced.removals, 2);

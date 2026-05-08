@@ -5,19 +5,35 @@ export type WordChangeRanges = {
   added: Array<[number, number]>;
 };
 
-type DiffToken = {
+export type WordEmphasisToken = {
   value: string;
   start: number;
   end: number;
 };
 
+export function wordEmphasisTokens(text: string): WordEmphasisToken[] {
+  return tokenizeForWordEmphasis(text);
+}
+
 export function wordEmphasisTokenValues(text: string): string[] {
-  return tokenizeForWordEmphasis(text).map((token) => token.value);
+  return wordEmphasisTokens(text).map((token) => token.value);
 }
 
 export function changedRanges(before: string, after: string): WordChangeRanges {
-  const beforeTokens = tokenizeForWordEmphasis(before);
-  const afterTokens = tokenizeForWordEmphasis(after);
+  return changedRangesForTokens(
+    before,
+    after,
+    wordEmphasisTokens(before),
+    wordEmphasisTokens(after),
+  );
+}
+
+export function changedRangesForTokens(
+  before: string,
+  after: string,
+  beforeTokens: WordEmphasisToken[],
+  afterTokens: WordEmphasisToken[],
+): WordChangeRanges {
   const removedTokens = new Set<number>();
   const addedTokens = new Set<number>();
   collectChangedTokenIndexes(
@@ -45,8 +61,8 @@ export function changedRanges(before: string, after: string): WordChangeRanges {
 
 const WORD_EMPHASIS_EXACT_LCS_MAX_CELLS = 4096;
 
-function tokenizeForWordEmphasis(text: string): DiffToken[] {
-  const tokens: DiffToken[] = [];
+function tokenizeForWordEmphasis(text: string): WordEmphasisToken[] {
+  const tokens: WordEmphasisToken[] = [];
   const tokenPattern = /[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|==|!=|<=|>=|&&|\|\||[^\s]/g;
   for (const match of text.matchAll(tokenPattern)) {
     const value = match[0] ?? "";
@@ -60,8 +76,8 @@ function isIdentifierToken(value: string): boolean {
   return /^[A-Za-z_$][\w$]*$/.test(value);
 }
 
-function splitIdentifierToken(value: string, start: number): DiffToken[] {
-  const parts: DiffToken[] = [];
+function splitIdentifierToken(value: string, start: number): WordEmphasisToken[] {
+  const parts: WordEmphasisToken[] = [];
   const partPattern = /[$_]+|[A-Z]+(?=[A-Z][a-z]|[0-9]|$)|[A-Z]?[a-z]+|\d+|[A-Z]+/g;
   for (const match of value.matchAll(partPattern)) {
     const part = match[0] ?? "";
@@ -72,10 +88,10 @@ function splitIdentifierToken(value: string, start: number): DiffToken[] {
 }
 
 function collectChangedTokenIndexes(
-  before: DiffToken[],
+  before: WordEmphasisToken[],
   beforeStart: number,
   beforeEnd: number,
-  after: DiffToken[],
+  after: WordEmphasisToken[],
   afterStart: number,
   afterEnd: number,
   changed: { removed: Set<number>; added: Set<number> },
@@ -153,10 +169,10 @@ function collectChangedTokenIndexes(
 }
 
 function collectChangedTokenIndexesByLcs(
-  before: DiffToken[],
+  before: WordEmphasisToken[],
   beforeStart: number,
   beforeEnd: number,
-  after: DiffToken[],
+  after: WordEmphasisToken[],
   afterStart: number,
   afterEnd: number,
   changed: { removed: Set<number>; added: Set<number> },
@@ -199,10 +215,10 @@ function collectChangedTokenIndexesByLcs(
 }
 
 function uniqueOrderedAnchors(
-  before: DiffToken[],
+  before: WordEmphasisToken[],
   beforeStart: number,
   beforeEnd: number,
-  after: DiffToken[],
+  after: WordEmphasisToken[],
   afterStart: number,
   afterEnd: number,
 ): Array<{ beforeIndex: number; afterIndex: number }> {
@@ -255,7 +271,7 @@ function longestIncreasingAfterIndexes(
   return ordered.reverse();
 }
 
-function tokenCounts(tokens: DiffToken[], start: number, end: number): Map<string, number> {
+function tokenCounts(tokens: WordEmphasisToken[], start: number, end: number): Map<string, number> {
   const counts = new Map<string, number>();
   for (let index = start; index < end; index++) {
     const value = tokens[index]!.value;
@@ -271,8 +287,8 @@ function markTokenRange(changed: Set<number>, start: number, end: number): void 
 type TokenGroup = { start: number; end: number };
 
 function refinedRangesForChangedTokens(
-  beforeTokens: DiffToken[],
-  afterTokens: DiffToken[],
+  beforeTokens: WordEmphasisToken[],
+  afterTokens: WordEmphasisToken[],
   removedTokens: Set<number>,
   addedTokens: Set<number>,
 ): WordChangeRanges {
@@ -301,7 +317,7 @@ function refinedRangesForChangedTokens(
   return { removed: mergeRanges(removed), added: mergeRanges(added) };
 }
 
-function changedTokenGroups(tokens: DiffToken[], changed: Set<number>): TokenGroup[] {
+function changedTokenGroups(tokens: WordEmphasisToken[], changed: Set<number>): TokenGroup[] {
   const groups: TokenGroup[] = [];
   let start: number | undefined;
   for (let index = 0; index < tokens.length; index++) {
@@ -319,9 +335,9 @@ function changedTokenGroups(tokens: DiffToken[], changed: Set<number>): TokenGro
 }
 
 function refinedIdentifierTokenRanges(
-  beforeTokens: DiffToken[],
+  beforeTokens: WordEmphasisToken[],
   beforeGroup: TokenGroup,
-  afterTokens: DiffToken[],
+  afterTokens: WordEmphasisToken[],
   afterGroup: TokenGroup,
 ): WordChangeRanges | undefined {
   if (beforeGroup.end - beforeGroup.start !== 1 || afterGroup.end - afterGroup.start !== 1)
@@ -346,7 +362,10 @@ function refinedIdentifierTokenRanges(
   };
 }
 
-function rangesForTokenGroup(tokens: DiffToken[], group: TokenGroup): Array<[number, number]> {
+function rangesForTokenGroup(
+  tokens: WordEmphasisToken[],
+  group: TokenGroup,
+): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   for (let index = group.start; index < group.end; index++)
     appendTokenRange(ranges, tokens[index]!);
@@ -354,7 +373,7 @@ function rangesForTokenGroup(tokens: DiffToken[], group: TokenGroup): Array<[num
 }
 
 function rangesForChangedTokens(
-  tokens: DiffToken[],
+  tokens: WordEmphasisToken[],
   changed: Set<number>,
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -364,7 +383,7 @@ function rangesForChangedTokens(
   return ranges;
 }
 
-function appendTokenRange(ranges: Array<[number, number]>, token: DiffToken): void {
+function appendTokenRange(ranges: Array<[number, number]>, token: WordEmphasisToken): void {
   const previous = ranges.at(-1);
   if (previous && token.start - previous[1] <= 1) previous[1] = token.end;
   else ranges.push([token.start, token.end]);

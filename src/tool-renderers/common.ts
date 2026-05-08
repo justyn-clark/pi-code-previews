@@ -15,6 +15,9 @@ import { escapeControlChars } from "../terminal-text.ts";
 
 const SECRET_SCAN_CHARS = positiveEnvInteger("CODE_PREVIEW_SECRET_SCAN_CHARS", 200_000);
 
+let themeCacheIdCounter = 0;
+const themeCacheIds = new WeakMap<object, number>();
+
 interface PreviewRenderContext<TState, TArgs> {
   args: TArgs;
   toolCallId: string;
@@ -67,23 +70,47 @@ function renderCodePreviewCall<TState, TArgs>(
   render: (context: PreviewRenderContext<TState, TArgs>) => Component,
 ): Component {
   if (mode !== "border") {
-    const component = render(context);
-    updateToolCallTiming(context, { animate: false });
-    return component;
+    if (!context) return render(context as PreviewRenderContext<TState, TArgs>);
+    const state = timingState(context);
+    if (
+      context?.isPartial === true &&
+      isToolCallTimingOnlyRender(state) &&
+      state?.codePreviewTimingCallComponent
+    ) {
+      updateToolCallTiming(context, { animate: false, formatLabel: false });
+      return state.codePreviewTimingCallComponent;
+    }
+    const component = render(
+      withLastComponent(context, unwrapTimingComponent(context.lastComponent)),
+    );
+    const previousWrapped = state?.codePreviewTimingCallComponent;
+    const wrapped =
+      state &&
+      previousWrapped instanceof TimingPreservedComponent &&
+      previousWrapped.component === component
+        ? previousWrapped
+        : state
+          ? new TimingPreservedComponent(component, state)
+          : component;
+    if (state) state.codePreviewTimingCallComponent = wrapped;
+    updateToolCallTiming(context, { animate: false, formatLabel: false });
+    return wrapped;
   }
   const state = borderState(context);
-  const callComponent = render(withLastComponent(context, state.codePreviewBorderCallComponent));
+  const timingOnly = context?.isPartial === true && isToolCallTimingOnlyRender(state);
+  const previousShell = state.codePreviewBorderShell;
+  const reuseShell =
+    previousShell instanceof BorderedToolCall && state.codePreviewBorderTheme === theme;
+  const reusedCall = timingOnly ? state.codePreviewBorderCallComponent : undefined;
+  const callComponent =
+    reusedCall ?? render(withLastComponent(context, state.codePreviewBorderCallComponent));
   const timing = updateToolCallTiming(context);
   state.codePreviewBorderCallComponent = callComponent;
-  const shell =
-    state.codePreviewBorderShell instanceof BorderedToolCall &&
-    state.codePreviewBorderTheme === theme
-      ? state.codePreviewBorderShell
-      : new BorderedToolCall(theme);
+  const shell = reuseShell ? previousShell : new BorderedToolCall(theme, state);
   shell.setBorderColor(borderColorKey(context));
   shell.setTimingLabel(timing?.label);
-  shell.setCall(callComponent);
-  shell.setResult(state.codePreviewBorderResultComponent);
+  if (!reusedCall || !reuseShell) shell.setCall(callComponent);
+  if (!timingOnly || !reuseShell) shell.setResult(state.codePreviewBorderResultComponent);
   state.codePreviewBorderShell = shell;
   state.codePreviewBorderTheme = theme;
   return shell;
@@ -96,11 +123,15 @@ function renderCodePreviewResult<TState, TArgs>(
   render: (context: PreviewRenderContext<TState, TArgs>) => Component,
 ): Component {
   const timing = updateToolCallTiming(context);
-  if (mode !== "border") return renderTimedResultFooter(context, theme, render, timing?.label);
+  if (mode !== "border") {
+    if (!timing?.label && !isToolCallTimingOnlyRender(timingState(context))) return render(context);
+    return renderTimedResultFooter(context, theme, render, timing?.label);
+  }
   const state = borderState(context);
-  const resultComponent = render(
-    withLastComponent(context, state.codePreviewBorderResultComponent),
-  );
+  const timingOnly = context?.isPartial === true && isToolCallTimingOnlyRender(state);
+  const reusedResult = timingOnly ? state.codePreviewBorderResultComponent : undefined;
+  const resultComponent =
+    reusedResult ?? render(withLastComponent(context, state.codePreviewBorderResultComponent));
   state.codePreviewBorderResultComponent = resultComponent;
   if (
     state.codePreviewBorderShell instanceof BorderedToolCall &&
@@ -108,9 +139,9 @@ function renderCodePreviewResult<TState, TArgs>(
   ) {
     state.codePreviewBorderShell.setBorderColor(borderColorKey(context));
     state.codePreviewBorderShell.setTimingLabel(timing?.label);
-    state.codePreviewBorderShell.setResult(resultComponent);
+    if (!reusedResult) state.codePreviewBorderShell.setResult(resultComponent);
   } else {
-    const shell = new BorderedToolCall(theme);
+    const shell = new BorderedToolCall(theme, state);
     shell.setBorderColor(borderColorKey(context));
     shell.setTimingLabel(timing?.label);
     shell.setCall(state.codePreviewBorderCallComponent);
@@ -128,10 +159,16 @@ function withLastComponent<TState, TArgs>(
   return { ...context, lastComponent };
 }
 
+function unwrapTimingComponent(component: Component | undefined): Component | undefined {
+  return component instanceof TimingPreservedComponent ? component.component : component;
+}
+
 type TimingState = Record<string, unknown> & {
   codePreviewTimingStartedAt?: number;
   codePreviewTimingEndedAt?: number;
   codePreviewTimingInterval?: ReturnType<typeof setInterval>;
+  codePreviewTimingOnlyRenderToken?: number;
+  codePreviewTimingCallComponent?: Component;
   codePreviewTimingResultComponent?: Component;
 };
 
@@ -147,17 +184,25 @@ function renderTimedResultFooter<TState, TArgs>(
 ): Component {
   const state = timingState(context);
   if (!state) return render(context);
-  const resultComponent = render(
-    withLastComponent(context, state.codePreviewTimingResultComponent ?? context.lastComponent),
-  );
+  const reusedResult = isToolCallTimingOnlyRender(state)
+    ? state.codePreviewTimingResultComponent
+    : undefined;
+  const resultComponent =
+    reusedResult ??
+    render(
+      withLastComponent(
+        context,
+        unwrapTimingComponent(state.codePreviewTimingResultComponent ?? context.lastComponent),
+      ),
+    );
   state.codePreviewTimingResultComponent = resultComponent;
   if (!timingLabel) return resultComponent;
-  return new ToolTimingFooter(resultComponent, theme.fg("muted", `╰─ ${timingLabel}`));
+  return new ToolTimingFooter(resultComponent, theme.fg("muted", `╰─ ${timingLabel}`), state);
 }
 
 function updateToolCallTiming<TState, TArgs>(
   context: PreviewRenderContext<TState, TArgs>,
-  options: { animate?: boolean } = {},
+  options: { animate?: boolean; formatLabel?: boolean } = {},
 ): ToolCallTiming | undefined {
   const state = timingState(context);
   if (!state) return undefined;
@@ -183,6 +228,7 @@ function updateToolCallTiming<TState, TArgs>(
     clearToolCallTimingInterval(state);
   }
 
+  if (options.formatLabel === false) return undefined;
   const running = context.isPartial === true;
   const endTime = running ? Date.now() : (state.codePreviewTimingEndedAt ?? Date.now());
   const label = running ? "Elapsed" : "Took";
@@ -195,14 +241,35 @@ function timingState<TState, TArgs>(
   return (context as { state?: unknown } | undefined)?.state as TimingState | undefined;
 }
 
+function isToolCallTimingOnlyRender(state: TimingState | undefined): boolean {
+  return state?.codePreviewTimingOnlyRenderToken !== undefined;
+}
+
 function ensureToolCallTimingInterval(state: TimingState, invalidate: () => void): void {
-  state.codePreviewTimingInterval ??= setInterval(invalidate, 100);
+  state.codePreviewTimingInterval ??= setInterval(
+    () => invalidateForToolCallTiming(state, invalidate),
+    100,
+  );
+}
+
+function invalidateForToolCallTiming(state: TimingState, invalidate: () => void): void {
+  const token = (state.codePreviewTimingOnlyRenderToken ?? 0) + 1;
+  state.codePreviewTimingOnlyRenderToken = token;
+  try {
+    invalidate();
+  } finally {
+    queueMicrotask(() => {
+      if (state.codePreviewTimingOnlyRenderToken === token)
+        state.codePreviewTimingOnlyRenderToken = undefined;
+    });
+  }
 }
 
 function clearToolCallTimingInterval(state: TimingState): void {
   if (!state.codePreviewTimingInterval) return;
   clearInterval(state.codePreviewTimingInterval);
   state.codePreviewTimingInterval = undefined;
+  state.codePreviewTimingOnlyRenderToken = undefined;
 }
 
 function formatToolCallDuration(ms: number): string {
@@ -238,10 +305,26 @@ function borderColorKey<TState, TArgs>(
   return "success";
 }
 
+class TimingPreservedComponent implements Component {
+  constructor(
+    readonly component: Component,
+    private readonly timingState: TimingState,
+  ) {}
+
+  render(width: number): string[] {
+    return this.component.render(width);
+  }
+
+  invalidate(): void {
+    if (!isToolCallTimingOnlyRender(this.timingState)) this.component.invalidate?.();
+  }
+}
+
 class ToolTimingFooter implements Component {
   constructor(
     private readonly component: Component,
     private readonly footer: string,
+    private readonly timingState: TimingState,
   ) {}
 
   render(width: number): string[] {
@@ -249,7 +332,7 @@ class ToolTimingFooter implements Component {
   }
 
   invalidate(): void {
-    this.component.invalidate?.();
+    if (!isToolCallTimingOnlyRender(this.timingState)) this.component.invalidate?.();
   }
 }
 
@@ -263,7 +346,10 @@ class BorderedToolCall implements Component {
   private cachedWidth: number | undefined;
   private cachedRows: string[] | undefined;
 
-  constructor(private readonly theme: Theme) {}
+  constructor(
+    private readonly theme: Theme,
+    private readonly timingState: TimingState,
+  ) {}
 
   setBorderColor(colorKey: BorderColorKey): void {
     if (this.borderColorKey === colorKey) return;
@@ -297,6 +383,7 @@ class BorderedToolCall implements Component {
 
   invalidate(): void {
     this.invalidateCache();
+    if (isToolCallTimingOnlyRender(this.timingState)) return;
     this.callComponent?.invalidate?.();
     this.resultComponent?.invalidate?.();
   }
@@ -319,9 +406,10 @@ class BorderedToolCall implements Component {
 
   private renderBottomBorder(width: number, border: (value: string) => string): string {
     const innerWidth = width - 2;
-    const label = this.timingLabel ? ` ${this.timingLabel} ` : "";
-    const labelWidth = visibleWidth(label);
-    if (!label || labelWidth > innerWidth) return border(`╰${"─".repeat(innerWidth)}╯`);
+    if (!this.timingLabel) return border(`╰${"─".repeat(innerWidth)}╯`);
+    const label = ` ${this.timingLabel} `;
+    const labelWidth = label.length;
+    if (labelWidth > innerWidth) return border(`╰${"─".repeat(innerWidth)}╯`);
     return `${border("╰")}${border("─".repeat(innerWidth - labelWidth))}${this.theme.fg("muted", label)}${border("╯")}`;
   }
 
@@ -487,7 +575,7 @@ export function previewCacheKey(
     codePreviewSettings.diffIntensity,
     codePreviewSettings.wordEmphasis,
     String(codePreviewSettings.editCollapsedLines),
-    (theme as Theme & { name?: string }).name ?? "",
+    themeCacheKey(theme),
     source.length,
     hashString(source),
   ].join("\0");
@@ -495,6 +583,18 @@ export function previewCacheKey(
 
 export function previewArgsKey(kind: string, source: string, path: string): string {
   return [kind, path, source.length, hashString(source)].join("\0");
+}
+
+function themeCacheKey(theme: Theme): string {
+  const namedTheme = (theme as Theme & { name?: string }).name ?? "";
+  if ((typeof theme !== "object" && typeof theme !== "function") || theme === null)
+    return namedTheme;
+  let id = themeCacheIds.get(theme);
+  if (id === undefined) {
+    id = ++themeCacheIdCounter;
+    themeCacheIds.set(theme, id);
+  }
+  return `${namedTheme}\0theme:${id}`;
 }
 
 function secretScanSample(source: string): string {

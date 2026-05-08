@@ -11,6 +11,7 @@ let shikiHighlighter: Awaited<ReturnType<typeof createHighlighter>> | undefined;
 let shikiInitVersion = 0;
 let shikiHighlighterGeneration = 0;
 let shikiInitializingTheme: string | undefined;
+let shikiStatusVersion = 0;
 let renderCacheChars = 0;
 const loadedShikiLanguages = new Set<string>();
 const pendingShikiLanguages = new Set<string>();
@@ -54,6 +55,7 @@ export async function initializeShiki(theme: string) {
     shikiHighlighter = nextHighlighter;
     shikiInitializingTheme = undefined;
     shikiHighlighterGeneration++;
+    bumpShikiStatusVersion();
     previousHighlighter?.dispose();
 
     clearRenderCache();
@@ -73,6 +75,7 @@ export async function initializeShiki(theme: string) {
     shikiHighlighter?.dispose();
     shikiHighlighter = undefined;
     shikiHighlighterGeneration++;
+    bumpShikiStatusVersion();
     clearRenderCache();
     loadedShikiLanguages.clear();
     pendingShikiLanguages.clear();
@@ -141,6 +144,7 @@ export function getShikiStatus(): {
   maxHighlightChars: number;
   loadedLanguages: number;
   pendingLanguages: number;
+  statusVersion: number;
 } {
   return {
     initialized: Boolean(shikiHighlighter),
@@ -149,6 +153,7 @@ export function getShikiStatus(): {
     maxHighlightChars: MAX_HIGHLIGHT_CHARS,
     loadedLanguages: loadedShikiLanguages.size,
     pendingLanguages: pendingShikiLanguages.size,
+    statusVersion: shikiStatusVersion,
   };
 }
 
@@ -176,6 +181,10 @@ function clearRenderCache(): void {
   renderCache.clear();
   renderCacheSizes.clear();
   renderCacheChars = 0;
+}
+
+function bumpShikiStatusVersion(): void {
+  shikiStatusVersion++;
 }
 
 function renderedCharSize(value: string[]): number {
@@ -212,12 +221,16 @@ function requestLanguageLoad(shikiLang: string, invalidate: (() => void) | undef
     .then(() => {
       if (generation !== shikiHighlighterGeneration) return;
       loadedShikiLanguages.add(shikiLang);
+      bumpShikiStatusVersion();
       const callbacks = languageLoadCallbacks.get(shikiLang);
       languageLoadCallbacks.delete(shikiLang);
       callbacks?.forEach((callback) => callback());
     })
     .catch(() => {
-      if (generation === shikiHighlighterGeneration) languageLoadCallbacks.delete(shikiLang);
+      if (generation === shikiHighlighterGeneration) {
+        bumpShikiStatusVersion();
+        languageLoadCallbacks.delete(shikiLang);
+      }
     })
     .finally(() => {
       if (generation === shikiHighlighterGeneration) pendingShikiLanguages.delete(shikiLang);

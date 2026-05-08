@@ -14,7 +14,7 @@ import { countLabel, formatBytes, metadata, previewFooter, showingFooter } from 
 import { resolvePreviewLanguage } from "../language.ts";
 import { renderDisplayPath } from "../paths.ts";
 import { codePreviewSettings } from "../settings.ts";
-import { normalizeShikiLanguage, shouldSkipHighlight } from "../shiki.ts";
+import { getShikiStatus, normalizeShikiLanguage, shouldSkipHighlight } from "../shiki.ts";
 import { escapeControlChars } from "../terminal-text.ts";
 import {
   createSimpleDiff,
@@ -52,35 +52,28 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       return previewShell.renderCall(context, theme, (renderContext) => {
         const path = getPathArg(args);
         const content = typeof args.content === "string" ? args.content : "";
-        const lang = resolvePreviewLanguage({
+        const previewKey = `${previewCacheKey(
+          "write-call",
+          content,
           path,
-          content,
-          piLanguage: getLanguageFromPath(path),
-        });
-        const limit = renderContext.expanded ? 0 : codePreviewSettings.writeCollapsedLines;
-        const skipHighlight = shouldSkipHighlight(content);
-        const preview = renderHighlightedPreviewText(
-          content,
-          limit,
-          skipHighlight ? undefined : lang,
+          renderContext.expanded,
           theme,
-          renderContext.invalidate,
+        )}\0${writeCallPreviewSettingsKey()}`;
+        return cachedPreview(
+          renderContext.state,
+          "writeCallPreviewKey",
+          "writeCallPreviewComponent",
+          previewKey,
+          () =>
+            renderWriteCallPreview(
+              content,
+              path,
+              cwd,
+              renderContext.expanded,
+              theme,
+              renderContext.invalidate,
+            ),
         );
-
-        let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
-        text += metadata(theme, [
-          formatBytes(Buffer.byteLength(content, "utf8")),
-          countLabel(preview.total, "line"),
-          lang ? normalizeShikiLanguage(lang) : undefined,
-        ]);
-        const contentPreview = preview.lines.length
-          ? withSecretWarning(content, theme, preview.lines.join("\n"))
-          : theme.fg("muted", "Empty content");
-        text += `\n${contentPreview}`;
-        if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
-        if (skipHighlight)
-          text += previewFooter(theme, "Syntax highlighting skipped for large content");
-        return new Text(text, 0, 0);
       });
     },
 
@@ -144,6 +137,56 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       });
     },
   });
+}
+
+function writeCallPreviewSettingsKey(): string {
+  const shikiStatus = getShikiStatus();
+  return [
+    String(codePreviewSettings.writeCollapsedLines),
+    codePreviewSettings.secretWarnings ? "secret-warnings" : "no-secret-warnings",
+    shikiStatus.initialized ? "shiki-ready" : "shiki-loading",
+    String(shikiStatus.loadedLanguages),
+    String(shikiStatus.pendingLanguages),
+    String(shikiStatus.statusVersion),
+  ].join("\0");
+}
+
+function renderWriteCallPreview(
+  content: string,
+  path: string,
+  cwd: string,
+  expanded: boolean,
+  theme: Theme,
+  invalidate?: () => void,
+): Text {
+  const lang = resolvePreviewLanguage({
+    path,
+    content,
+    piLanguage: getLanguageFromPath(path),
+  });
+  const limit = expanded ? 0 : codePreviewSettings.writeCollapsedLines;
+  const skipHighlight = shouldSkipHighlight(content);
+  const preview = renderHighlightedPreviewText(
+    content,
+    limit,
+    skipHighlight ? undefined : lang,
+    theme,
+    invalidate,
+  );
+
+  let text = `${theme.fg("toolTitle", theme.bold("write"))} ${renderDisplayPath(path, cwd, theme)}`;
+  text += metadata(theme, [
+    formatBytes(Buffer.byteLength(content, "utf8")),
+    countLabel(preview.total, "line"),
+    lang ? normalizeShikiLanguage(lang) : undefined,
+  ]);
+  const contentPreview = preview.lines.length
+    ? withSecretWarning(content, theme, preview.lines.join("\n"))
+    : theme.fg("muted", "Empty content");
+  text += `\n${contentPreview}`;
+  if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
+  if (skipHighlight) text += previewFooter(theme, "Syntax highlighting skipped for large content");
+  return new Text(text, 0, 0);
 }
 
 function renderWriteDiffPreview(

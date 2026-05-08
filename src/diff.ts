@@ -1,9 +1,10 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import {
-  changedRanges,
-  wordEmphasisTokenValues,
+  changedRangesForTokens,
+  wordEmphasisTokens,
   type WordChangeRanges,
+  type WordEmphasisToken,
 } from "./diff-word-emphasis.ts";
 import { positiveEnvInteger } from "./env.ts";
 import { codePreviewSettings } from "./settings.ts";
@@ -30,6 +31,7 @@ export class FullWidthDiffText implements Component {
 
   render(width: number): string[] {
     if (this.cachedWidth === width && this.cachedRows) return this.cachedRows;
+    const diffBackground = createDiffBackgroundResolver(this.theme);
     const rows = this.text.split("\n").flatMap((rawLine) => {
       const { kind, line } = parseMarkedDiffLine(rawLine);
       const rows = wrapAnsiToWidth(line, width, DIFF_WRAP_ROWS, continuationPrefix(line));
@@ -38,7 +40,7 @@ export class FullWidthDiffText implements Component {
       return rows.map((row) => {
         const truncated = truncateToWidth(row, width, "");
         const padding = " ".repeat(Math.max(0, width - visibleWidth(truncated)));
-        return diffLineBg(kind, truncated + padding, this.theme);
+        return diffLineBg(kind, truncated + padding, diffBackground);
       });
     });
     this.cachedWidth = width;
@@ -87,7 +89,7 @@ export function summarizeDiff(diff: string): {
   let hunks = 0;
   let groupAdditions = 0;
   let groupRemovals = 0;
-  const lines = diff.split("\n");
+  let totalLines = 0;
 
   function flushChangeGroup() {
     if (groupAdditions === 0 && groupRemovals === 0) return;
@@ -105,7 +107,8 @@ export function summarizeDiff(diff: string): {
     groupRemovals = 0;
   }
 
-  for (const line of lines) {
+  forEachSplitLine(diff, (line) => {
+    totalLines++;
     const isAddition = line.startsWith("+") && !line.startsWith("+++");
     const isRemoval = line.startsWith("-") && !line.startsWith("---");
 
@@ -118,7 +121,7 @@ export function summarizeDiff(diff: string): {
     } else {
       flushChangeGroup();
     }
-  }
+  });
   flushChangeGroup();
 
   return {
@@ -127,9 +130,39 @@ export function summarizeDiff(diff: string): {
     replacements,
     insertions,
     deletions,
-    totalLines: lines.length,
+    totalLines,
     hunks,
   };
+}
+
+function forEachSplitLine(text: string, callback: (line: string) => void): void {
+  let start = 0;
+  while (start <= text.length) {
+    const newline = text.indexOf("\n", start);
+    if (newline < 0) {
+      callback(text.slice(start));
+      break;
+    }
+    callback(text.slice(start, newline));
+    start = newline + 1;
+  }
+}
+
+function splitLinesLimited(text: string, limit: number): string[] {
+  const max = Math.max(0, Math.floor(limit));
+  if (Number.isNaN(max) || max <= 0) return [];
+  const lines: string[] = [];
+  let start = 0;
+  while (start <= text.length && lines.length < max) {
+    const newline = text.indexOf("\n", start);
+    if (newline < 0) {
+      lines.push(text.slice(start));
+      break;
+    }
+    lines.push(text.slice(start, newline));
+    start = newline + 1;
+  }
+  return lines;
 }
 
 export function renderSyntaxHighlightedDiff(
@@ -206,12 +239,11 @@ type DiffRenderOptions = {
 };
 
 function renderDiff(diff: string, options: DiffRenderOptions): string {
-  const lines = diff.split("\n");
-  const max = Math.min(lines.length, Math.max(0, Math.floor(options.limit)));
+  const lines = splitLinesLimited(diff, options.limit);
   const out: string[] = [];
   const lang = options.syntaxHighlight ? options.lang : undefined;
 
-  for (let i = 0; i < max; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const parsed = parseDiffLine(line);
     if (!parsed) {
@@ -222,7 +254,7 @@ function renderDiff(diff: string, options: DiffRenderOptions): string {
     if (options.emphasizeChangedPairs && isChangedDiffLine(parsed)) {
       const block: ParsedDiffLine[] = [];
       let end = i;
-      while (end < max) {
+      while (end < lines.length) {
         const next = parseDiffLine(lines[end]!);
         if (!next || !isChangedDiffLine(next)) break;
         block.push(next);
@@ -278,19 +310,25 @@ function renderChangeBlock(
   invalidate?: () => void,
 ): string[] {
   const removed = block.flatMap((line, index) =>
-    isRemovedDiffLine(line) ? [{ index, line }] : [],
+    isRemovedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
   );
-  const added = block.flatMap((line, index) => (isAddedDiffLine(line) ? [{ index, line }] : []));
+  const added = block.flatMap((line, index) =>
+    isAddedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
+  );
+  const removedByIndex = new Map(removed.map((line) => [line.index, line]));
+  const addedByIndex = new Map(added.map((line) => [line.index, line]));
   const emphasis = new Map<number, { ranges: Array<[number, number]>; kind: "add" | "remove" }>();
 
   for (const [removedIndex, addedIndex] of matchChangedLines(removed, added)) {
-    const removedLine = block[removedIndex] as RemovedDiffLine;
-    const addedLine = block[addedIndex] as AddedDiffLine;
-    // Compute ranges against the same normalized text that Shiki/fallback rendering displays.
-    // Otherwise tabs or escaped control chars shift the emphasis range by multiple cells.
-    const removedContent = normalizeDiffContent(removedLine.content);
-    const addedContent = normalizeDiffContent(addedLine.content);
-    const ranges = changedRanges(removedContent, addedContent);
+    const removedLine = removedByIndex.get(removedIndex);
+    const addedLine = addedByIndex.get(addedIndex);
+    if (!removedLine || !addedLine) continue;
+    const ranges = changedRangesForTokens(
+      normalizedChangedContent(removedLine),
+      normalizedChangedContent(addedLine),
+      changedLineTokens(removedLine),
+      changedLineTokens(addedLine),
+    );
     if (!shouldEmphasizeChangedPair(ranges)) continue;
     emphasis.set(removedIndex, { ranges: ranges.removed, kind: "remove" });
     emphasis.set(addedIndex, { ranges: ranges.added, kind: "add" });
@@ -303,7 +341,40 @@ function renderChangeBlock(
   });
 }
 
-type IndexedChangedLine<T extends AddedDiffLine | RemovedDiffLine> = { index: number; line: T };
+type IndexedChangedLine<T extends AddedDiffLine | RemovedDiffLine> = {
+  index: number;
+  line: T;
+  normalizedContent?: string;
+  tokens?: WordEmphasisToken[];
+  tokenValues?: string[];
+};
+
+function indexedChangedLine<T extends AddedDiffLine | RemovedDiffLine>(
+  index: number,
+  line: T,
+): IndexedChangedLine<T> {
+  return { index, line };
+}
+
+function normalizedChangedContent(
+  line: IndexedChangedLine<AddedDiffLine | RemovedDiffLine>,
+): string {
+  // Compute ranges against the same normalized text that Shiki/fallback rendering displays.
+  // Otherwise tabs or escaped control chars shift the emphasis range by multiple cells.
+  return (line.normalizedContent ??= normalizeDiffContent(line.line.content));
+}
+
+function changedLineTokens(
+  line: IndexedChangedLine<AddedDiffLine | RemovedDiffLine>,
+): WordEmphasisToken[] {
+  return (line.tokens ??= wordEmphasisTokens(normalizedChangedContent(line)));
+}
+
+function changedLineTokenValues(
+  line: IndexedChangedLine<AddedDiffLine | RemovedDiffLine>,
+): string[] {
+  return (line.tokenValues ??= changedLineTokens(line).map((token) => token.value));
+}
 
 function matchChangedLines(
   removed: Array<IndexedChangedLine<RemovedDiffLine>>,
@@ -312,12 +383,10 @@ function matchChangedLines(
   if (removed.length === 0 || added.length === 0) return [];
   if (removed.length * added.length > MAX_CHANGED_LINE_PAIR_CELLS)
     return matchChangedLinesByPosition(removed, added);
-  const removedTokens = removed.map(({ line }) =>
-    similarityTokens(normalizeDiffContent(line.content)),
-  );
-  const addedTokens = added.map(({ line }) => similarityTokens(normalizeDiffContent(line.content)));
-  const scores = removedTokens.map((tokens) =>
-    addedTokens.map((addedLineTokens) => tokenSimilarity(tokens, addedLineTokens)),
+  const scores = removed.map((removedLine) =>
+    added.map((addedLine) =>
+      tokenSimilarity(changedLineTokenValues(removedLine), changedLineTokenValues(addedLine)),
+    ),
   );
   const dp = Array.from({ length: removed.length + 1 }, () =>
     Array.from({ length: added.length + 1 }, () => 0),
@@ -370,9 +439,12 @@ function matchChangedLinesByPosition(
 ): Array<[number, number]> {
   const pairs: Array<[number, number]> = [];
   for (let index = 0; index < Math.min(removed.length, added.length); index++) {
-    const removedTokens = similarityTokens(normalizeDiffContent(removed[index]!.line.content));
-    const addedTokens = similarityTokens(normalizeDiffContent(added[index]!.line.content));
-    if (tokenSimilarity(removedTokens, addedTokens) >= MIN_POSITIONAL_FALLBACK_PAIR_SCORE)
+    if (
+      tokenSimilarity(
+        changedLineTokenValues(removed[index]!),
+        changedLineTokenValues(added[index]!),
+      ) >= MIN_POSITIONAL_FALLBACK_PAIR_SCORE
+    )
       pairs.push([removed[index]!.index, added[index]!.index]);
   }
   return pairs;
@@ -468,22 +540,33 @@ function tokenWeight(token: string): number {
   return 1;
 }
 
-function similarityTokens(text: string): string[] {
-  return wordEmphasisTokenValues(text);
-}
-
 function dimAnsi(text: string): string {
   return `\x1b[2m${text}\x1b[22m`;
 }
 
-function diffLineBg(kind: "add" | "remove", line: string, theme?: Theme): string {
+type DiffLineKind = "add" | "remove";
+
+type DiffBackgroundResolver = (kind: DiffLineKind) => string | undefined;
+
+function createDiffBackgroundResolver(theme?: Theme): DiffBackgroundResolver {
+  const intensity = codePreviewSettings.diffIntensity;
+  if (intensity === "off") return () => undefined;
+  const cache: Partial<Record<DiffLineKind, string>> = {};
+  return (kind) =>
+    (cache[kind] ??=
+      deriveDiffBg(kind, theme, intensity === "medium" ? 0.24 : 0.14) ??
+      fallbackDiffBg(kind, intensity));
+}
+
+function diffLineBg(
+  kind: DiffLineKind,
+  line: string,
+  diffBackground: DiffBackgroundResolver,
+): string {
   // Full-width subtle backgrounds for changed lines. Re-apply after foreground
   // resets emitted by Shiki so token coloring does not punch holes in the bg.
-  if (codePreviewSettings.diffIntensity === "off") return line;
-  const intensity = codePreviewSettings.diffIntensity;
-  const bg =
-    deriveDiffBg(kind, theme, intensity === "medium" ? 0.24 : 0.14) ??
-    fallbackDiffBg(kind, intensity);
+  const bg = diffBackground(kind);
+  if (!bg) return line;
   const coloredLine = line
     .replace(/\x1b\[39m/g, `\x1b[39m${bg}`)
     .replace(/\x1b\[49m/g, `\x1b[49m${bg}`);
@@ -493,13 +576,13 @@ function diffLineBg(kind: "add" | "remove", line: string, theme?: Theme): string
   return bg + coloredLine;
 }
 
-function fallbackDiffBg(kind: "add" | "remove", intensity: "subtle" | "medium"): string {
+function fallbackDiffBg(kind: DiffLineKind, intensity: "subtle" | "medium"): string {
   if (kind === "add") return intensity === "medium" ? "\x1b[48;2;22;68;40m" : "\x1b[48;2;10;42;26m";
   return intensity === "medium" ? "\x1b[48;2;78;36;40m" : "\x1b[48;2;50;24;30m";
 }
 
 function deriveDiffBg(
-  kind: "add" | "remove",
+  kind: DiffLineKind,
   theme: Theme | undefined,
   intensity: number,
 ): string | undefined {

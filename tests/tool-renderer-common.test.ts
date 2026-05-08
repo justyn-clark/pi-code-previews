@@ -178,6 +178,60 @@ test("tool timing invalidates every 100ms while partial and stops when complete"
   assert.equal(invalidations, 5);
 });
 
+test("tool timing invalidations reuse previous preview components", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, toolCallTiming: true });
+  vi.useFakeTimers();
+  const shell = createCodePreviewToolShell("on");
+  const state = {};
+  const theme = testTheme();
+  let callRenders = 0;
+  let resultRenders = 0;
+  let childInvalidations = 0;
+  let callComponent: Component | undefined;
+  let resultComponent: Component | undefined;
+  const invalidate = () => childInvalidations++;
+
+  const renderPass = () => {
+    callComponent?.invalidate?.();
+    resultComponent?.invalidate?.();
+    callComponent = shell.renderCall(
+      baseRenderContext(state, { executionStarted: true, invalidate: renderPass }),
+      theme,
+      () => ({ ...textComponent(`call ${++callRenders}`), invalidate }),
+    );
+    resultComponent = shell.renderResult(
+      baseRenderContext(state, {
+        executionStarted: true,
+        invalidate: renderPass,
+        isPartial: true,
+      }),
+      theme,
+      () => ({ ...textComponent(`result ${++resultRenders}`), invalidate }),
+    );
+  };
+
+  renderPass();
+  assert.equal(callRenders, 1);
+  assert.equal(resultRenders, 1);
+  assert.equal(childInvalidations, 0);
+
+  vi.advanceTimersByTime(500);
+  assert.equal(callRenders, 1);
+  assert.equal(resultRenders, 1);
+  assert.equal(childInvalidations, 0);
+
+  resultComponent = shell.renderResult(
+    baseRenderContext(state, {
+      executionStarted: true,
+      invalidate: renderPass,
+      isPartial: false,
+    }),
+    theme,
+    () => ({ ...textComponent(`result ${++resultRenders}`), invalidate }),
+  );
+  assert.equal(resultRenders, 2);
+});
+
 test("border shell caches framed rows between renders", () => {
   const shell = createCodePreviewToolShell("border");
   let renders = 0;
