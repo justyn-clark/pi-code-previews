@@ -3,7 +3,7 @@ import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { SettingsList, truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import { registerToolRenderers } from "./src/renderers.ts";
 import { getSettingsPath, loadSettingsFromDisk, saveSettingsToDisk } from "./src/settings-store.ts";
-import { createSettingsItems } from "./src/settings-ui.ts";
+import { createSettingsCategoryItems, isSettingsGroupItemId } from "./src/settings-ui.ts";
 import {
   setCodePreviewSettings,
   codePreviewSettings,
@@ -76,29 +76,39 @@ export default async function codePreviews(pi: ExtensionAPI) {
   pi.registerCommand("code-preview-settings", {
     description: "Configure code preview settings",
     handler: async (_args, ctx) => {
-      const items = createSettingsItems(codePreviewSettings);
       await ctx.ui.custom((_tui, _theme, _kb, done) => {
         let list: SettingsList;
+        const handleSettingChange = (id: string, value: string) => {
+          if (isSettingsGroupItemId(id)) {
+            syncSettingsListValues(list, handleSettingChange);
+            return;
+          }
+
+          const previousTheme = codePreviewSettings.shikiTheme;
+          const resetRequested = id === "resetToDefaults" && value === "reset now";
+          setCodePreviewSettings(updateSetting(codePreviewSettings, id, value));
+          syncSettingsListValues(list, handleSettingChange);
+          if (codePreviewSettings.shikiTheme !== previousTheme)
+            void initializeShiki(codePreviewSettings.shikiTheme);
+          void queueSettingsSave(codePreviewSettings)
+            .then(() => {
+              if (resetRequested) ctx.ui.notify("Code preview settings reset to defaults", "info");
+            })
+            .catch((error) => {
+              ctx.ui.notify(formatSettingsSaveError(error), "warning");
+            });
+        };
+
+        const items = createSettingsCategoryItems(
+          codePreviewSettings,
+          () => codePreviewSettings,
+          handleSettingChange,
+        );
         list = new SettingsList(
           items,
           items.length + 2,
           getSettingsListTheme(),
-          (id, value) => {
-            const previousTheme = codePreviewSettings.shikiTheme;
-            const resetRequested = id === "resetToDefaults" && value === "reset now";
-            setCodePreviewSettings(updateSetting(codePreviewSettings, id, value));
-            if (resetRequested) syncSettingsListValues(list);
-            if (codePreviewSettings.shikiTheme !== previousTheme)
-              void initializeShiki(codePreviewSettings.shikiTheme);
-            void queueSettingsSave(codePreviewSettings)
-              .then(() => {
-                if (resetRequested)
-                  ctx.ui.notify("Code preview settings reset to defaults", "info");
-              })
-              .catch((error) => {
-                ctx.ui.notify(formatSettingsSaveError(error), "warning");
-              });
-          },
+          handleSettingChange,
           () => {
             void flushSettingsSaveQueue()
               .catch(() => undefined)
@@ -185,7 +195,14 @@ function yesNo(value: boolean): "yes" | "no" {
   return value ? "yes" : "no";
 }
 
-function syncSettingsListValues(list: SettingsList): void {
-  for (const item of createSettingsItems(codePreviewSettings))
+function syncSettingsListValues(
+  list: SettingsList,
+  onSettingChange: (id: string, value: string) => void,
+): void {
+  for (const item of createSettingsCategoryItems(
+    codePreviewSettings,
+    () => codePreviewSettings,
+    onSettingChange,
+  ))
     list.updateValue(item.id, item.currentValue);
 }

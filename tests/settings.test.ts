@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { createSettingsItems } from "../src/settings-ui.ts";
+import {
+  createSettingsCategoryItems,
+  createSettingsItems,
+  isSettingsGroupItemId,
+} from "../src/settings-ui.ts";
 import {
   CODE_PREVIEW_SETTING_KEYS,
   codePreviewSettings,
@@ -223,6 +227,27 @@ test("settings UI item values are handled by updateSetting", () => {
     ),
     defaultCodePreviewSettings,
   );
+});
+
+test("settings category UI keeps the top level compact", () => {
+  const items = createSettingsCategoryItems(
+    defaultCodePreviewSettings,
+    () => defaultCodePreviewSettings,
+    () => undefined,
+  );
+  assert.deepEqual(
+    items.map((item) => item.label),
+    [
+      "Appearance",
+      "Diff previews",
+      "Output previews",
+      "Enabled tools",
+      "Warnings & safety",
+      "Advanced",
+    ],
+  );
+  assert.equal(items.filter((item) => isSettingsGroupItemId(item.id)).length, 5);
+  assert.equal(items.find((item) => item.id === "tools")?.currentValue, "all tools");
 });
 
 test("empty tool selections stay explicit in the settings UI", () => {
