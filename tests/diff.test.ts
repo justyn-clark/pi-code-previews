@@ -9,8 +9,9 @@ import {
   renderPlainDiff,
   renderSyntaxHighlightedDiff,
   summarizeDiff,
+  wordEmphasisTelemetry,
 } from "../src/diff.ts";
-import { changedRanges } from "../src/diff-word-emphasis.ts";
+import { changedRanges, changedRangesWithConfidence } from "../src/diff-word-emphasis.ts";
 
 let previousCodePreviewSettings = { ...codePreviewSettings };
 
@@ -103,6 +104,69 @@ test("word emphasis marks low-overlap one-to-one changed pairs instead of skippi
   assert.match(rendered[1] ?? "", /\x1b\[48;2;64;132;82m\x1b\[1mblock/);
 });
 
+test("word emphasis uses compound identifier parts when pairing changed lines", () => {
+  const diff = [
+    "-1 return readCollapsedLines(input);",
+    "+1 return editCollapsedLines(input);",
+    "+2 return renderPreview(input);",
+  ].join("\n");
+  const rendered = renderSyntaxHighlightedDiff(diff, undefined, testTheme(), 3).split("\n");
+  assert.match(rendered[0] ?? "", /\x1b\[48;2;148;62;70m\x1b\[1mread/);
+  assert.match(rendered[1] ?? "", /\x1b\[48;2;64;132;82m\x1b\[1medit/);
+  assert.doesNotMatch(rendered[2] ?? "", /\x1b\[48;2;64;132;82m/);
+});
+
+test("word emphasis skips ambiguous changed-line pairs", () => {
+  const diff = [
+    "-1 const result = formatValue(input);",
+    "+1 const result = formatLabel(input);",
+    "+2 const result = formatTitle(input);",
+  ].join("\n");
+  const rendered = renderSyntaxHighlightedDiff(diff, undefined, testTheme(), 3);
+  assert.doesNotMatch(rendered, /\x1b\[48;2;148;62;70m|\x1b\[48;2;64;132;82m/);
+});
+
+test("word emphasis telemetry summarizes confidence and skipped pairs", () => {
+  assert.deepEqual(
+    wordEmphasisTelemetry("-1 const value = oldValue;\n+1 const value = newValue;", 2),
+    {
+      changedBlocks: 1,
+      changedLines: { removed: 1, added: 1 },
+      pairConfidence: { high: 0, medium: 1, low: 0 },
+      rangeConfidence: { high: 1, medium: 0, low: 0 },
+      emphasizedPairs: 1,
+      skippedPairs: 0,
+      skippedPotentialPairs: 0,
+    },
+  );
+
+  assert.equal(
+    wordEmphasisTelemetry(
+      [
+        "-1 const result = formatValue(input);",
+        "+1 const result = formatLabel(input);",
+        "+2 const result = formatTitle(input);",
+      ].join("\n"),
+      3,
+    ).skippedPotentialPairs,
+    1,
+  );
+});
+
+test("word emphasis pairs high-confidence reordered lines", () => {
+  const diff = [
+    "-1 const alphaResult = computeAlpha(input);",
+    "-2 const betaResult = computeBeta(previous);",
+    "+1 const betaResult = computeBeta(current);",
+    "+2 const alphaResult = computeAlpha(next);",
+  ].join("\n");
+  const rendered = renderSyntaxHighlightedDiff(diff, undefined, testTheme(), 4).split("\n");
+  assert.match(rendered[0] ?? "", /\x1b\[48;2;148;62;70m\x1b\[1minput/);
+  assert.match(rendered[1] ?? "", /\x1b\[48;2;148;62;70m\x1b\[1mprevious/);
+  assert.match(rendered[2] ?? "", /\x1b\[48;2;64;132;82m\x1b\[1mcurrent/);
+  assert.match(rendered[3] ?? "", /\x1b\[48;2;64;132;82m\x1b\[1mnext/);
+});
+
 test("word emphasis narrows compound identifier changes to changed segments", () => {
   setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
   const ranges = changedRanges(
@@ -111,6 +175,43 @@ test("word emphasis narrows compound identifier changes to changed segments", ()
   );
   assert.deepEqual(ranges.removed, [[14, 18]]);
   assert.deepEqual(ranges.added, [[14, 18]]);
+});
+
+test("word emphasis narrows similar single-token edits", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
+  assert.deepEqual(changedRanges("value1000", "value1001"), {
+    removed: [[8, 9]],
+    added: [[8, 9]],
+  });
+  assert.deepEqual(changedRanges("color", "colour"), {
+    removed: [],
+    added: [[4, 5]],
+  });
+});
+
+test("smart word emphasis keeps meaningful operator-only changes", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "smart" });
+  assert.deepEqual(changedRanges("if (count < limit)", "if (count <= limit)"), {
+    removed: [],
+    added: [[11, 12]],
+  });
+});
+
+test("word emphasis softly aligns similar replacements inside multi-token groups", () => {
+  setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
+  assert.deepEqual(
+    changedRanges("return oldValue + nextValue;", "return newValue - previousValue;"),
+    {
+      removed: [
+        [7, 10],
+        [16, 22],
+      ],
+      added: [
+        [7, 10],
+        [16, 26],
+      ],
+    },
+  );
 });
 
 test("word emphasis skips low-confidence positional pairs inside larger blocks", () => {
@@ -188,4 +289,15 @@ test("word range emphasis returns changed spans for unrelated token-heavy lines"
   const ranges = changedRanges(before, after);
   assert.deepEqual(ranges.removed, [[0, before.length]]);
   assert.deepEqual(ranges.added, [[0, after.length]]);
+});
+
+test("word range confidence distinguishes exact and fallback-heavy changes", () => {
+  assert.equal(
+    changedRangesWithConfidence("const value = oldValue;", "const value = newValue;").confidence,
+    "high",
+  );
+
+  const before = Array.from({ length: 600 }, (_, index) => `before_${index}`).join(" ");
+  const after = Array.from({ length: 600 }, (_, index) => `after_${index}`).join(" ");
+  assert.equal(changedRangesWithConfidence(before, after).confidence, "low");
 });

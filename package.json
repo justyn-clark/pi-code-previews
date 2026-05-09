@@ -21,6 +21,7 @@
   "files": [
     "index.ts",
     "src",
+    "docs",
     "README.md",
     "LICENSE",
     "tsconfig.json"
@@ -38,6 +39,7 @@
     "bench:edit-rendering": "tsx bench/edit-rendering.ts",
     "bench:write-diff": "tsx bench/write-diff.ts",
     "bench:word-pathology": "tsx bench/word-pathology.ts",
+    "word:spans": "tsx bench/word-emphasis-spans.ts",
     "bench:recommended": "npm run bench:diff-wrap && npm run bench:edit-rendering && npm run bench:write-diff && npm run bench:word-pathology",
     "test": "vitest run",
     "prepublishOnly": "npm run check && npm test",

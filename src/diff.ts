@@ -1,9 +1,12 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import {
-  changedRangesForTokens,
+  changedRangesForTokensWithConfidence,
+  wordEmphasisSimilarityTokenValues,
+  wordEmphasisTokenWeight,
   wordEmphasisTokens,
-  type WordChangeRanges,
+  type ConfidentWordChangeRanges,
+  type WordChangeConfidence,
   type WordEmphasisToken,
 } from "./diff-word-emphasis.ts";
 import { positiveEnvInteger } from "./env.ts";
@@ -311,6 +314,16 @@ function renderDiffParsedLine(
   );
 }
 
+export type WordEmphasisTelemetry = {
+  changedBlocks: number;
+  changedLines: { removed: number; added: number };
+  pairConfidence: Record<WordChangeConfidence, number>;
+  rangeConfidence: Record<WordChangeConfidence, number>;
+  emphasizedPairs: number;
+  skippedPairs: number;
+  skippedPotentialPairs: number;
+};
+
 function renderChangeBlock(
   block: ParsedDiffLine[],
   lang: string | undefined,
@@ -328,19 +341,19 @@ function renderChangeBlock(
   const addedByIndex = new Map(added.map((line) => [line.index, line]));
   const emphasis = new Map<number, { ranges: Array<[number, number]>; kind: "add" | "remove" }>();
 
-  for (const [removedIndex, addedIndex] of matchChangedLines(removed, added)) {
-    const removedLine = removedByIndex.get(removedIndex);
-    const addedLine = addedByIndex.get(addedIndex);
+  for (const pair of matchChangedLines(removed, added)) {
+    const removedLine = removedByIndex.get(pair.removedIndex);
+    const addedLine = addedByIndex.get(pair.addedIndex);
     if (!removedLine || !addedLine) continue;
-    const ranges = changedRangesForTokens(
+    const ranges = changedRangesForTokensWithConfidence(
       normalizedChangedContent(removedLine),
       normalizedChangedContent(addedLine),
       changedLineTokens(removedLine),
       changedLineTokens(addedLine),
     );
-    if (!shouldEmphasizeChangedPair(ranges)) continue;
-    emphasis.set(removedIndex, { ranges: ranges.removed, kind: "remove" });
-    emphasis.set(addedIndex, { ranges: ranges.added, kind: "add" });
+    if (!shouldEmphasizeChangedPair(ranges, pair.confidence)) continue;
+    emphasis.set(pair.removedIndex, { ranges: ranges.removed, kind: "remove" });
+    emphasis.set(pair.addedIndex, { ranges: ranges.added, kind: "add" });
   }
 
   return block.map((line, index) => {
@@ -350,12 +363,89 @@ function renderChangeBlock(
   });
 }
 
+export function wordEmphasisTelemetry(
+  diff: string,
+  limit = Number.MAX_SAFE_INTEGER,
+): WordEmphasisTelemetry {
+  const lines = splitLinesLimited(diff, limit);
+  const parsedLines = lines.map(parseDiffLine);
+  const telemetry = emptyWordEmphasisTelemetry();
+
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parsedLines[i];
+    if (!parsed || !isChangedDiffLine(parsed)) continue;
+    const block: ParsedDiffLine[] = [];
+    let end = i;
+    while (end < lines.length) {
+      const next = parsedLines[end];
+      if (!next || !isChangedDiffLine(next)) break;
+      block.push(next);
+      end++;
+    }
+    addChangeBlockTelemetry(block, telemetry);
+    i = end - 1;
+  }
+
+  return telemetry;
+}
+
+function emptyWordEmphasisTelemetry(): WordEmphasisTelemetry {
+  return {
+    changedBlocks: 0,
+    changedLines: { removed: 0, added: 0 },
+    pairConfidence: { high: 0, medium: 0, low: 0 },
+    rangeConfidence: { high: 0, medium: 0, low: 0 },
+    emphasizedPairs: 0,
+    skippedPairs: 0,
+    skippedPotentialPairs: 0,
+  };
+}
+
+function addChangeBlockTelemetry(block: ParsedDiffLine[], telemetry: WordEmphasisTelemetry): void {
+  const removed = block.flatMap((line, index) =>
+    isRemovedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
+  );
+  const added = block.flatMap((line, index) =>
+    isAddedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
+  );
+  telemetry.changedBlocks++;
+  telemetry.changedLines.removed += removed.length;
+  telemetry.changedLines.added += added.length;
+  const removedByIndex = new Map(removed.map((line) => [line.index, line]));
+  const addedByIndex = new Map(added.map((line) => [line.index, line]));
+  const pairs = matchChangedLines(removed, added);
+  telemetry.skippedPotentialPairs += Math.max(
+    0,
+    Math.min(removed.length, added.length) - pairs.length,
+  );
+
+  for (const pair of pairs) {
+    telemetry.pairConfidence[pair.confidence]++;
+    const removedLine = removedByIndex.get(pair.removedIndex);
+    const addedLine = addedByIndex.get(pair.addedIndex);
+    if (!removedLine || !addedLine) {
+      telemetry.skippedPairs++;
+      continue;
+    }
+    const ranges = changedRangesForTokensWithConfidence(
+      normalizedChangedContent(removedLine),
+      normalizedChangedContent(addedLine),
+      changedLineTokens(removedLine),
+      changedLineTokens(addedLine),
+    );
+    telemetry.rangeConfidence[ranges.confidence]++;
+    if (shouldEmphasizeChangedPair(ranges, pair.confidence)) telemetry.emphasizedPairs++;
+    else telemetry.skippedPairs++;
+  }
+}
+
 type IndexedChangedLine<T extends AddedDiffLine | RemovedDiffLine> = {
   index: number;
   line: T;
   normalizedContent?: string;
   tokens?: WordEmphasisToken[];
-  tokenValues?: string[];
+  similarityTokenValues?: string[];
+  similarityFeatureValues?: string[];
 };
 
 function indexedChangedLine<T extends AddedDiffLine | RemovedDiffLine>(
@@ -379,22 +469,49 @@ function changedLineTokens(
   return (line.tokens ??= wordEmphasisTokens(normalizedChangedContent(line)));
 }
 
-function changedLineTokenValues(
+function changedLineSimilarityTokenValues(
   line: IndexedChangedLine<AddedDiffLine | RemovedDiffLine>,
 ): string[] {
-  return (line.tokenValues ??= changedLineTokens(line).map((token) => token.value));
+  return (line.similarityTokenValues ??= wordEmphasisSimilarityTokenValues(
+    changedLineTokens(line),
+  ));
 }
+
+function changedLineSimilarityFeatureValues(
+  line: IndexedChangedLine<AddedDiffLine | RemovedDiffLine>,
+): string[] {
+  return (line.similarityFeatureValues ??= similarityFeatures(
+    changedLineSimilarityTokenValues(line),
+  ));
+}
+
+type ChangedLinePair = {
+  removedIndex: number;
+  addedIndex: number;
+  confidence: WordChangeConfidence;
+};
+
+type ChangedLinePairCandidate = {
+  removedPosition: number;
+  addedPosition: number;
+  score: number;
+};
 
 function matchChangedLines(
   removed: Array<IndexedChangedLine<RemovedDiffLine>>,
   added: Array<IndexedChangedLine<AddedDiffLine>>,
-): Array<[number, number]> {
+): ChangedLinePair[] {
   if (removed.length === 0 || added.length === 0) return [];
   if (removed.length * added.length > MAX_CHANGED_LINE_PAIR_CELLS)
     return matchChangedLinesByPosition(removed, added);
+  const tokenWeight = similarityTokenWeight(removed, added);
   const scores = removed.map((removedLine) =>
     added.map((addedLine) =>
-      tokenSimilarity(changedLineTokenValues(removedLine), changedLineTokenValues(addedLine)),
+      tokenSimilarity(
+        changedLineSimilarityFeatureValues(removedLine),
+        changedLineSimilarityFeatureValues(addedLine),
+        tokenWeight,
+      ),
     ),
   );
   const dp = Array.from({ length: removed.length + 1 }, () =>
@@ -434,29 +551,254 @@ function matchChangedLines(
 
   const similarPairs = pairs.reverse();
   if (similarPairs.length === 0 && removed.length === 1 && added.length === 1)
-    return [[removed[0]!.index, added[0]!.index]];
-  return addPositionalFallbackPairs(removed, added, scores, similarPairs);
+    return [
+      {
+        removedIndex: removed[0]!.index,
+        addedIndex: added[0]!.index,
+        confidence: "medium",
+      },
+    ];
+  const confidentPairs = confidentChangedLinePairs(
+    removed,
+    added,
+    scores,
+    addPositionalFallbackPairs(removed, added, scores, similarPairs),
+  );
+  return addHighConfidenceCrossingPairs(removed, added, scores, confidentPairs);
 }
 
 const MIN_CHANGED_LINE_PAIR_SCORE = 0.45;
 const MIN_POSITIONAL_FALLBACK_PAIR_SCORE = 0.28;
-const MAX_CHANGED_LINE_PAIR_CELLS = 256;
+const CHANGED_LINE_PAIR_AMBIGUITY_MARGIN = 0.06;
+const CHANGED_LINE_PAIR_AMBIGUITY_RATIO = 0.92;
+const MIN_HIGH_CONFIDENCE_CROSSING_PAIR_SCORE = 0.72;
+const HIGH_CONFIDENCE_CROSSING_PAIR_MARGIN = 0.12;
+const HIGH_CONFIDENCE_CROSSING_PAIR_RATIO = 0.85;
+const MAX_CHANGED_LINE_PAIR_CELLS = 1024;
+const MAX_LINE_TOKEN_SIMILARITY_CELLS = 16_384;
 
 function matchChangedLinesByPosition(
   removed: Array<IndexedChangedLine<RemovedDiffLine>>,
   added: Array<IndexedChangedLine<AddedDiffLine>>,
-): Array<[number, number]> {
-  const pairs: Array<[number, number]> = [];
+): ChangedLinePair[] {
+  const pairs: ChangedLinePair[] = [];
+  const tokenWeight = similarityTokenWeight(removed, added);
   for (let index = 0; index < Math.min(removed.length, added.length); index++) {
-    if (
-      tokenSimilarity(
-        changedLineTokenValues(removed[index]!),
-        changedLineTokenValues(added[index]!),
-      ) >= MIN_POSITIONAL_FALLBACK_PAIR_SCORE
-    )
-      pairs.push([removed[index]!.index, added[index]!.index]);
+    const score = tokenSimilarity(
+      changedLineSimilarityFeatureValues(removed[index]!),
+      changedLineSimilarityFeatureValues(added[index]!),
+      tokenWeight,
+    );
+    if (score >= MIN_POSITIONAL_FALLBACK_PAIR_SCORE)
+      pairs.push({
+        removedIndex: removed[index]!.index,
+        addedIndex: added[index]!.index,
+        confidence: linePairConfidence(score, 0),
+      });
   }
   return pairs;
+}
+
+type SimilarityTokenWeight = (token: string) => number;
+
+const SIMILARITY_BIGRAM_PREFIX = "\u0000PI_SIM_BIGRAM\u0000";
+
+function similarityFeatures(tokens: string[]): string[] {
+  const features = [...tokens];
+  appendSimilarityShingles(
+    features,
+    tokens.filter(isSimilarityShingleToken),
+    2,
+    SIMILARITY_BIGRAM_PREFIX,
+  );
+  return features;
+}
+
+function appendSimilarityShingles(
+  features: string[],
+  tokens: string[],
+  size: number,
+  prefix: string,
+): void {
+  for (let index = 0; index + size <= tokens.length; index++)
+    features.push(`${prefix}${tokens.slice(index, index + size).join("\u0000")}`);
+}
+
+function isSimilarityShingleToken(token: string): boolean {
+  return wordEmphasisTokenWeight(token) >= 1;
+}
+
+function similarityTokenWeight(
+  removed: Array<IndexedChangedLine<RemovedDiffLine>>,
+  added: Array<IndexedChangedLine<AddedDiffLine>>,
+): SimilarityTokenWeight {
+  const featureLists = [...removed, ...added].map(changedLineSimilarityFeatureValues);
+  const documentCounts = new Map<string, number>();
+  for (const features of featureLists) {
+    for (const feature of new Set(features))
+      documentCounts.set(feature, (documentCounts.get(feature) ?? 0) + 1);
+  }
+  const lineCount = featureLists.length;
+  const weights = new Map<string, number>();
+  return (token) => {
+    const cached = weights.get(token);
+    if (cached !== undefined) return cached;
+    const documentCount = documentCounts.get(token) ?? lineCount;
+    const rarity = Math.min(3, 1 + Math.log((lineCount + 1) / (documentCount + 1)));
+    const weight = tokenWeight(token) * rarity;
+    weights.set(token, weight);
+    return weight;
+  };
+}
+
+function confidentChangedLinePairs(
+  removed: Array<IndexedChangedLine<RemovedDiffLine>>,
+  added: Array<IndexedChangedLine<AddedDiffLine>>,
+  scores: number[][],
+  pairs: Array<[number, number]>,
+): ChangedLinePair[] {
+  const removedPositions = new Map(removed.map((line, index) => [line.index, index]));
+  const addedPositions = new Map(added.map((line, index) => [line.index, index]));
+  const confidentPairs: ChangedLinePair[] = [];
+  for (const [removedIndex, addedIndex] of pairs) {
+    const removedPosition = removedPositions.get(removedIndex);
+    const addedPosition = addedPositions.get(addedIndex);
+    if (removedPosition === undefined || addedPosition === undefined) continue;
+    const score = scores[removedPosition]?.[addedPosition] ?? 0;
+    const competingScore = competingChangedLineScore(
+      scores,
+      removedPosition,
+      addedPosition,
+      new Set(),
+      new Set(),
+    );
+    if (isAmbiguousChangedLinePairScore(score, competingScore)) continue;
+    confidentPairs.push({
+      removedIndex,
+      addedIndex,
+      confidence: linePairConfidence(score, competingScore),
+    });
+  }
+  return confidentPairs;
+}
+
+function competingChangedLineScore(
+  scores: number[][],
+  removedPosition: number,
+  addedPosition: number,
+  usedRemoved: Set<number>,
+  usedAdded: Set<number>,
+): number {
+  let competingScore = 0;
+  const row = scores[removedPosition] ?? [];
+  for (
+    let candidateAddedPosition = 0;
+    candidateAddedPosition < row.length;
+    candidateAddedPosition++
+  ) {
+    if (candidateAddedPosition === addedPosition || usedAdded.has(candidateAddedPosition)) continue;
+    competingScore = Math.max(competingScore, row[candidateAddedPosition] ?? 0);
+  }
+  for (
+    let candidateRemovedPosition = 0;
+    candidateRemovedPosition < scores.length;
+    candidateRemovedPosition++
+  ) {
+    if (candidateRemovedPosition === removedPosition || usedRemoved.has(candidateRemovedPosition))
+      continue;
+    competingScore = Math.max(
+      competingScore,
+      scores[candidateRemovedPosition]?.[addedPosition] ?? 0,
+    );
+  }
+  return competingScore;
+}
+
+function isAmbiguousChangedLinePairScore(score: number, competingScore: number): boolean {
+  return (
+    competingScore >= MIN_POSITIONAL_FALLBACK_PAIR_SCORE &&
+    (score - competingScore <= CHANGED_LINE_PAIR_AMBIGUITY_MARGIN ||
+      competingScore >= score * CHANGED_LINE_PAIR_AMBIGUITY_RATIO)
+  );
+}
+
+function linePairConfidence(score: number, competingScore: number): WordChangeConfidence {
+  if (
+    score >= MIN_HIGH_CONFIDENCE_CROSSING_PAIR_SCORE &&
+    score - competingScore >= HIGH_CONFIDENCE_CROSSING_PAIR_MARGIN &&
+    competingScore <= score * HIGH_CONFIDENCE_CROSSING_PAIR_RATIO
+  )
+    return "high";
+  return "medium";
+}
+
+function addHighConfidenceCrossingPairs(
+  removed: Array<IndexedChangedLine<RemovedDiffLine>>,
+  added: Array<IndexedChangedLine<AddedDiffLine>>,
+  scores: number[][],
+  pairs: ChangedLinePair[],
+): ChangedLinePair[] {
+  const removedPositions = new Map(removed.map((line, index) => [line.index, index]));
+  const addedPositions = new Map(added.map((line, index) => [line.index, index]));
+  const usedRemoved = new Set<number>();
+  const usedAdded = new Set<number>();
+  for (const pair of pairs) {
+    const removedPosition = removedPositions.get(pair.removedIndex);
+    const addedPosition = addedPositions.get(pair.addedIndex);
+    if (removedPosition !== undefined) usedRemoved.add(removedPosition);
+    if (addedPosition !== undefined) usedAdded.add(addedPosition);
+  }
+
+  const candidates: ChangedLinePairCandidate[] = [];
+  for (let removedPosition = 0; removedPosition < removed.length; removedPosition++) {
+    if (usedRemoved.has(removedPosition)) continue;
+    for (let addedPosition = 0; addedPosition < added.length; addedPosition++) {
+      if (usedAdded.has(addedPosition)) continue;
+      const score = scores[removedPosition]?.[addedPosition] ?? 0;
+      if (score >= MIN_HIGH_CONFIDENCE_CROSSING_PAIR_SCORE)
+        candidates.push({ removedPosition, addedPosition, score });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const out = [...pairs];
+  for (const candidate of candidates) {
+    if (usedRemoved.has(candidate.removedPosition) || usedAdded.has(candidate.addedPosition))
+      continue;
+    if (!isHighConfidenceCrossingPair(scores, candidate, usedRemoved, usedAdded)) continue;
+    usedRemoved.add(candidate.removedPosition);
+    usedAdded.add(candidate.addedPosition);
+    out.push({
+      removedIndex: removed[candidate.removedPosition]!.index,
+      addedIndex: added[candidate.addedPosition]!.index,
+      confidence: "high",
+    });
+  }
+
+  return out.sort(
+    (a, b) =>
+      (removedPositions.get(a.removedIndex) ?? 0) - (removedPositions.get(b.removedIndex) ?? 0),
+  );
+}
+
+function isHighConfidenceCrossingPair(
+  scores: number[][],
+  candidate: ChangedLinePairCandidate,
+  usedRemoved: Set<number>,
+  usedAdded: Set<number>,
+): boolean {
+  return (
+    linePairConfidence(
+      candidate.score,
+      competingChangedLineScore(
+        scores,
+        candidate.removedPosition,
+        candidate.addedPosition,
+        usedRemoved,
+        usedAdded,
+      ),
+    ) === "high"
+  );
 }
 
 function addPositionalFallbackPairs(
@@ -519,34 +861,76 @@ function positionPairs(
   return pairs;
 }
 
-function tokenSimilarity(beforeTokens: string[], afterTokens: string[]): number {
+function tokenSimilarity(
+  beforeTokens: string[],
+  afterTokens: string[],
+  weight: SimilarityTokenWeight = tokenWeight,
+): number {
   if (beforeTokens.length === 0 || afterTokens.length === 0)
     return beforeTokens.length === afterTokens.length ? 1 : 0;
-  const beforeWeight = tokenListWeight(beforeTokens);
-  const afterWeight = tokenListWeight(afterTokens);
+  const bagSimilarity = unorderedTokenSimilarity(beforeTokens, afterTokens, weight);
+  const orderedSimilarity = orderedTokenSimilarity(beforeTokens, afterTokens, weight);
+  if (orderedSimilarity === undefined) return bagSimilarity;
+  return Math.max(
+    orderedSimilarity,
+    bagSimilarity * 0.8,
+    orderedSimilarity * 0.75 + bagSimilarity * 0.25,
+  );
+}
+
+function unorderedTokenSimilarity(
+  beforeTokens: string[],
+  afterTokens: string[],
+  weight: SimilarityTokenWeight,
+): number {
+  const beforeWeight = tokenListWeight(beforeTokens, weight);
+  const afterWeight = tokenListWeight(afterTokens, weight);
   const remaining = new Map<string, number>();
   for (const token of beforeTokens) remaining.set(token, (remaining.get(token) ?? 0) + 1);
   let sharedWeight = 0;
   for (const token of afterTokens) {
     const count = remaining.get(token) ?? 0;
     if (count === 0) continue;
-    sharedWeight += tokenWeight(token);
+    sharedWeight += weight(token);
     if (count === 1) remaining.delete(token);
     else remaining.set(token, count - 1);
   }
   return (2 * sharedWeight) / (beforeWeight + afterWeight);
 }
 
-function tokenListWeight(tokens: string[]): number {
-  return tokens.reduce((total, token) => total + tokenWeight(token), 0);
+function orderedTokenSimilarity(
+  beforeTokens: string[],
+  afterTokens: string[],
+  weight: SimilarityTokenWeight,
+): number | undefined {
+  if (beforeTokens.length * afterTokens.length > MAX_LINE_TOKEN_SIMILARITY_CELLS) return undefined;
+  const beforeWeight = tokenListWeight(beforeTokens, weight);
+  const afterWeight = tokenListWeight(afterTokens, weight);
+  let next = new Float64Array(afterTokens.length + 1);
+  let current = new Float64Array(afterTokens.length + 1);
+
+  for (let i = beforeTokens.length - 1; i >= 0; i--) {
+    current[afterTokens.length] = 0;
+    for (let j = afterTokens.length - 1; j >= 0; j--) {
+      const match =
+        beforeTokens[i] === afterTokens[j]
+          ? next[j + 1]! + weight(beforeTokens[i]!)
+          : Number.NEGATIVE_INFINITY;
+      current[j] = Math.max(match, next[j]!, current[j + 1]!);
+    }
+    [next, current] = [current, next];
+  }
+
+  return (2 * next[0]!) / (beforeWeight + afterWeight);
+}
+
+function tokenListWeight(tokens: string[], weight: SimilarityTokenWeight): number {
+  return tokens.reduce((total, token) => total + weight(token), 0);
 }
 
 function tokenWeight(token: string): number {
-  if (/^[A-Za-z_$][\w$]*$/.test(token)) return 2;
-  if (/^\d+(?:\.\d+)?$/.test(token)) return 1.5;
-  if (/^(?:===|!==|=>|==|!=|<=|>=|&&|\|\||[+\-*\/%<>=!?:]+)$/.test(token)) return 0.75;
-  if (/^[{}()[\].,;]$/.test(token)) return 0.15;
-  return 1;
+  if (token.startsWith(SIMILARITY_BIGRAM_PREFIX)) return 1.15;
+  return wordEmphasisTokenWeight(token);
 }
 
 function dimAnsi(text: string): string {
@@ -618,8 +1002,14 @@ function normalizeDiffContent(content: string): string {
   return escapeControlChars(content.replace(/\t/g, "   "));
 }
 
-function shouldEmphasizeChangedPair(ranges: WordChangeRanges): boolean {
-  return ranges.removed.length > 0 || ranges.added.length > 0;
+function shouldEmphasizeChangedPair(
+  ranges: ConfidentWordChangeRanges,
+  lineConfidence: WordChangeConfidence,
+): boolean {
+  if (ranges.removed.length === 0 && ranges.added.length === 0) return false;
+  if (lineConfidence === "low") return false;
+  if (ranges.confidence === "low" && lineConfidence !== "high") return false;
+  return true;
 }
 
 function emphasizeChangedSpans(

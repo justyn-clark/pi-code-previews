@@ -1,6 +1,6 @@
 import type { DiffWordEmphasis } from "../src/settings.ts";
-import { renderSyntaxHighlightedDiff } from "../src/diff.ts";
-import { changedRanges } from "../src/diff-word-emphasis.ts";
+import { renderSyntaxHighlightedDiff, wordEmphasisTelemetry } from "../src/diff.ts";
+import { changedRanges, changedRangesWithConfidence } from "../src/diff-word-emphasis.ts";
 import { codePreviewSettings, setCodePreviewSettings } from "../src/settings.ts";
 import {
   benchTheme,
@@ -68,8 +68,11 @@ try {
 
   printLayerSummary(results);
   printOverheadSummary(results);
-  console.log("changedRanges cases target the 4096-cell exact LCS boundary and anchor fallback.");
-  console.log("renderChangedBlock cases target the 256-cell changed-line pairing boundary.");
+  printConfidenceSummary(makeWordCases(), makePairingCases());
+  console.log("changedRanges cases target weighted exact LCS and anchor fallback paths.");
+  console.log(
+    "renderChangedBlock cases target exact and positional fallback changed-line pairing.",
+  );
   console.log("");
   printResults(results);
   if (sink === Number.MIN_SAFE_INTEGER) console.log("sink", sink);
@@ -80,19 +83,19 @@ try {
 function makeWordCases(): WordCase[] {
   return [
     {
-      name: "token LCS exact boundary 64x64 reversed",
-      before: numberedTokens("tok", 64).join(" "),
-      after: numberedTokens("tok", 64).reverse().join(" "),
+      name: "token weighted LCS boundary 512x512 reversed",
+      before: numberedTokens("tok", 512).join(" "),
+      after: numberedTokens("tok", 512).reverse().join(" "),
     },
     {
-      name: "token anchor fallback 65x65 reversed",
-      before: numberedTokens("tok", 65).join(" "),
-      after: numberedTokens("tok", 65).reverse().join(" "),
+      name: "token anchor fallback 513x513 reversed",
+      before: numberedTokens("tok", 513).join(" "),
+      after: numberedTokens("tok", 513).reverse().join(" "),
     },
     {
-      name: "repeated tokens no unique anchors",
-      before: repeatedTokens("before", 260),
-      after: repeatedTokens("after", 260),
+      name: "repeated tokens no unique anchors fallback",
+      before: repeatedTokens("before", 520),
+      after: repeatedTokens("after", 520),
     },
     {
       name: "very long identifier refinement",
@@ -109,10 +112,10 @@ function makeWordCases(): WordCase[] {
 
 function makePairingCases(): PairingCase[] {
   return [
-    { name: "line pairing exact boundary 16x16", ...pairingDiff(16, similarBefore, similarAfter) },
+    { name: "line pairing exact boundary 32x32", ...pairingDiff(32, similarBefore, similarAfter) },
     {
-      name: "line pairing fallback boundary 17x17",
-      ...pairingDiff(17, similarBefore, similarAfter),
+      name: "line pairing fallback boundary 33x33",
+      ...pairingDiff(33, similarBefore, similarAfter),
     },
     { name: "line pairing fallback 100x100", ...pairingDiff(100, similarBefore, similarAfter) },
     {
@@ -138,6 +141,40 @@ function printOverheadSummary(
   });
   console.log("Changed-line pairing overhead summary");
   console.table(rows);
+  console.log("");
+}
+
+function printConfidenceSummary(wordCases: WordCase[], pairingCases: PairingCase[]): void {
+  setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "smart" });
+  console.log("Word emphasis confidence summary");
+  console.table(
+    wordCases.map((benchCase) => {
+      const ranges = changedRangesWithConfidence(benchCase.before, benchCase.after);
+      return {
+        case: benchCase.name,
+        confidence: ranges.confidence,
+        removedRanges: ranges.removed.length,
+        addedRanges: ranges.added.length,
+      };
+    }),
+  );
+  console.log("Changed-line pair confidence summary");
+  console.table(
+    pairingCases.map((benchCase) => {
+      const telemetry = wordEmphasisTelemetry(benchCase.diff, benchCase.lines);
+      return {
+        case: benchCase.name,
+        pairs: telemetry.emphasizedPairs,
+        skipped: telemetry.skippedPairs + telemetry.skippedPotentialPairs,
+        pairHigh: telemetry.pairConfidence.high,
+        pairMedium: telemetry.pairConfidence.medium,
+        pairLow: telemetry.pairConfidence.low,
+        rangeHigh: telemetry.rangeConfidence.high,
+        rangeMedium: telemetry.rangeConfidence.medium,
+        rangeLow: telemetry.rangeConfidence.low,
+      };
+    }),
+  );
   console.log("");
 }
 

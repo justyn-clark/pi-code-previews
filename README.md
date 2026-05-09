@@ -64,6 +64,8 @@ npm run bench:recommended
 
 Individual suites cover diff wrapping, edit renderer previews, write/edit diff generation, and word-emphasis/pathological changed-line pairing.
 
+See [docs/word-emphasis.md](docs/word-emphasis.md) for word-emphasis accuracy notes, confidence scoring, telemetry, and golden-corpus workflow.
+
 ## Configuration
 
 Settings are stored globally in Pi's agent config directory:
