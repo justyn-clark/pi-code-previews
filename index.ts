@@ -2,7 +2,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { SettingsList, truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import { registerToolRenderers } from "./src/renderers.ts";
-import { getSettingsPath, loadSettingsFromDisk, saveSettingsToDisk } from "./src/settings-store.ts";
+import { getSettingsPath, saveSettingsToDisk } from "./src/settings-store.ts";
+import { loadCodePreviewSettings as loadCodePreviewSettingsFromDisk } from "./src/public-api.ts";
 import { createSettingsCategoryItems, isSettingsGroupItemId } from "./src/settings-ui.ts";
 import {
   setCodePreviewSettings,
@@ -23,9 +24,12 @@ import { formatEnabledCodePreviewTools } from "./src/tool-selection.ts";
 /**
  * Syntax-highlighted code previews for pi.
  */
+export { withCodePreviewShell, type CodePreviewShellOptions } from "./src/cooperative-tools.ts";
+export { loadCodePreviewSettings } from "./src/public-api.ts";
+export type { CodePreviewSettings, ToolCallBackgroundMode } from "./src/settings.ts";
+
 export default async function codePreviews(pi: ExtensionAPI) {
-  const savedSettings = await loadSettingsFromDisk();
-  if (savedSettings) setCodePreviewSettings(savedSettings);
+  await loadCodePreviewSettingsFromDisk();
   if (codePreviewSettings.syntaxHighlighting) void initializeShiki(codePreviewSettings.shikiTheme);
   const registeredTools = new Set<CodePreviewToolName>();
   const activatedTools = new Set<CodePreviewToolName>();

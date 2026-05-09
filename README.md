@@ -98,6 +98,30 @@ When content/result/diff previews are disabled, collapsed successful output or c
 
 `CODE_PREVIEW_TOOL_CALL_TIMING=false` hides tool durations. When enabled, durations appear in the result footer unless `toolCallBackground` is `border`; in border mode they appear in the bottom-right border corner.
 
+## Cooperating extension tools
+
+`codePreview.tools` only controls the built-in tools that this package explicitly renders. For custom tools from another extension, wrap that tool definition before registering it:
+
+```ts
+import { withCodePreviewShell, loadCodePreviewSettings } from "pi-code-previews";
+
+export default async function myExtension(pi) {
+  await loadCodePreviewSettings(); // optional: respect saved code-preview settings
+
+  pi.registerTool(withCodePreviewShell(myToolDefinition));
+}
+```
+
+`withCodePreviewShell()` preserves the original tool definition, including `execute`, schemas, prompt metadata, and existing renderers. It only decorates the tool-call shell/background. Tools that already use `renderShell: "self"` are left untouched by default; pass `{ preserveSelfShell: false }` to force wrapping. Published cooperating extensions should treat `pi-code-previews` as a peer or optional peer dependency so users do not load duplicate copies.
+
+### Prompt for extension authors
+
+Give this to an agent working on another pi extension:
+
+```text
+Add pi-code-previews support to this extension. Install it with the package manager this project uses, e.g. `npm install pi-code-previews --save-peer && npm install pi-code-previews --save-dev` or the equivalent pnpm/yarn commands. Import `withCodePreviewShell` and `loadCodePreviewSettings` from `pi-code-previews`, load settings once before tool registration, and wrap this extension's own tool definitions with `withCodePreviewShell(...)` before `pi.registerTool(...)`. Do not wrap tools owned by other extensions. Run checks.
+```
+
 ## Project settings
 
 You can also set defaults in `.pi/settings.json`:
