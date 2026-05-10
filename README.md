@@ -164,17 +164,4 @@ Add pi-code-previews support to this extension. Install it as a runtime dependen
 
 ## Screenshots
 
-Write:
-<img width="780" height="482" alt="Screenshot 2026-04-30 at 11 47 26 PM" src="https://github.com/user-attachments/assets/98241dc0-192c-4549-8467-381d0abd0d18" />
-
-Read:
-<img width="781" height="465" alt="Screenshot 2026-04-30 at 11 47 38 PM" src="https://github.com/user-attachments/assets/beabf2e4-e453-4548-bde4-1af9e7f8ce6a" />
-
-Edit:
-<img width="780" height="497" alt="Screenshot 2026-04-30 at 11 47 52 PM" src="https://github.com/user-attachments/assets/b6f17d63-667f-4bfc-acbf-892012b930f4" />
-
-Bash, ls, find:
-<img width="1034" height="276" alt="Screenshot 2026-04-30 at 11 47 59 PM" src="https://github.com/user-attachments/assets/99d769c2-f987-4844-a9de-fe01f2018e52" />
-
-Grep:
-<img width="780" height="541" alt="Screenshot 2026-04-30 at 11 48 10 PM" src="https://github.com/user-attachments/assets/56169abf-deef-4b6f-b647-c2b6a668ac06" />
+<img width="1053" height="368" alt="Screenshot 2026-05-10 at 12 01 39 PM" src="https://github.com/user-attachments/assets/58435989-ec3d-4d08-a956-7422126e6e8b" />
