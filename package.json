@@ -54,7 +54,7 @@
     "word:spans": "tsx bench/word-emphasis-spans.ts",
     "bench:recommended": "npm run bench:diff-wrap && npm run bench:edit-rendering && npm run bench:write-diff && npm run bench:word-pathology",
     "test": "vitest run",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm test",
     "pack:dry": "npm pack --dry-run"
   },
