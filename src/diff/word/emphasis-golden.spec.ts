@@ -18,7 +18,7 @@ afterEach(() => {
   setCodePreviewSettings(previousCodePreviewSettings);
 });
 
-test("word emphasis golden corpus", () => {
+test("word emphasis golden cases match the curated corpus", () => {
   for (const goldenCase of wordEmphasisGoldenCases) {
     setCodePreviewSettings({
       ...codePreviewSettings,

@@ -11,7 +11,7 @@ import { findRenderer, preserveCodePreviewToolsEnv, registerRenderers } from "..
 
 preserveCodePreviewToolsEnv();
 
-test("registered grep, find, and ls renderers hide successful results until expanded", () => {
+test("path-list integration hides successful grep, find, and ls results until expanded", () => {
   process.env.CODE_PREVIEW_TOOLS = "grep,find,ls";
   const previousSettings = cloneCodePreviewSettingsForTest();
   setCodePreviewSettings({
@@ -88,7 +88,7 @@ test("registered grep, find, and ls renderers hide successful results until expa
   }
 });
 
-test("registered find and ls renderers keep error results out of path-list formatting", () => {
+test("path-list integration keeps find and ls errors out of path-list formatting", () => {
   process.env.CODE_PREVIEW_TOOLS = "find,ls";
   const registered = registerRenderers();
   for (const name of ["find", "ls"]) {

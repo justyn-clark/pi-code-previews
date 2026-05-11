@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { afterEach, test } from "vitest";
-import codePreviews from "./index";
+import codePreviews, { loadCodePreviewSettings, withCodePreviewShell } from "./index";
+import type { CodePreviewSettings, ToolCallBackgroundMode } from "./index";
 import {
   codePreviewSettings,
   defaultCodePreviewSettings,
@@ -16,6 +17,15 @@ import { renderComponent, stripAnsi, testTheme } from "./src/testing/render";
 const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
 const originalHome = process.env.HOME;
 const originalSettings = { ...codePreviewSettings, tools: [...codePreviewSettings.tools] };
+
+test("root public API exposes only stable package-author helpers", () => {
+  const mode: ToolCallBackgroundMode = "border";
+  const settings: CodePreviewSettings = { ...defaultCodePreviewSettings, toolCallBackground: mode };
+  assert.equal(settings.toolCallBackground, "border");
+  assert.equal(typeof codePreviews, "function");
+  assert.equal(typeof loadCodePreviewSettings, "function");
+  assert.equal(typeof withCodePreviewShell, "function");
+});
 
 afterEach(() => {
   restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);

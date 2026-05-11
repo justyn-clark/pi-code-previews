@@ -1,9 +1,14 @@
-import type { SettingItem } from "@earendil-works/pi-tui";
 import type { CodePreviewEditableSettingId } from "../index";
 
 export type SettingsUiItemId = CodePreviewEditableSettingId | "settingsFile";
 
-export type SettingItemDefinition = Pick<SettingItem, "label" | "description" | "values">;
+export type SettingValueOptions = readonly [string, ...string[]];
+
+export interface SettingItemDefinition {
+  label: string;
+  description: string;
+  values?: SettingValueOptions;
+}
 
 export const SETTINGS_GROUP_ID_PREFIX = "group:";
 

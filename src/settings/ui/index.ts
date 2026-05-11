@@ -14,6 +14,7 @@ import {
   SETTINGS_GROUP_ID_PREFIX,
   WARNING_SETTING_IDS,
   WRITE_PREVIEW_SETTING_IDS,
+  type SettingItemDefinition,
   type SettingsUiItemId,
 } from "./registry";
 import {
@@ -209,11 +210,13 @@ function createSettingListItems(
 }
 
 function createSettingItem(current: CodePreviewSettings, id: SettingsUiItemId): SettingItem {
-  const definition = SETTING_ITEM_DEFINITIONS[id];
+  const definition = SETTING_ITEM_DEFINITIONS[id] as SettingItemDefinition;
   const item: SettingItem = {
     id,
-    ...definition,
+    label: definition.label,
+    description: definition.description,
     currentValue: id === "settingsFile" ? getSettingsPath() : formatSettingValue(current, id),
+    ...(definition.values ? { values: [...definition.values] } : {}),
   };
   if (id === "shikiTheme")
     item.submenu = (currentValue, done) => new ThemeSelectSubmenu(currentValue, done);
