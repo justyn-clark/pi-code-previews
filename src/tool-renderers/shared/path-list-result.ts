@@ -9,7 +9,7 @@ import { showingFooter, trimSingleTrailingNewline } from "../../preview/format";
 import { renderPathListLines } from "../../path-list/render";
 import { escapeControlChars } from "../../shared/terminal-text";
 import { renderSelectedOutputLines } from "./preview-text";
-import { renderHiddenPreviewExpandHint } from "../../preview/tool-shell";
+import { renderHiddenPreviewPrelude, renderResultPrelude } from "./result-prelude";
 
 interface PathListResultConfig {
   cwd: string;
@@ -34,16 +34,22 @@ export function renderPathListResult(
   context: PathListRenderContext,
   config: PathListResultConfig,
 ): Component {
-  if (isPartial) return new Text(theme.fg("warning", config.loadingLabel), 0, 0);
   const output = trimSingleTrailingNewline(getTextContent(result.content));
-  if (context.isError)
-    return new Text(
-      theme.fg("error", escapeControlChars(output.split("\n")[0] || config.errorLabel)),
-      0,
-      0,
-    );
-  if (!expanded && !config.previewEnabled)
-    return renderHiddenPreviewExpandHint(context.state, theme);
+  const prelude = renderResultPrelude({
+    isPartial,
+    theme,
+    loadingLabel: config.loadingLabel,
+    isError: context.isError,
+    errorText: output.split("\n")[0] || config.errorLabel,
+  });
+  if (prelude) return prelude;
+  const hiddenPrelude = renderHiddenPreviewPrelude({
+    expanded,
+    state: context.state,
+    theme,
+    hidePreview: !config.previewEnabled,
+  });
+  if (hiddenPrelude) return hiddenPrelude;
   if (!output || output === config.emptyMarker)
     return new Text(theme.fg("muted", config.emptyLabel(output)), 0, 0);
   if (expanded && !config.previewEnabled)

@@ -3,6 +3,7 @@ import {
   hiddenLinesMarker,
   selectPreviewLines,
   selectPreviewTextLines,
+  type PreviewLineEntry,
 } from "../../preview/format";
 import { codePreviewSettings } from "../../settings/index";
 import { renderHighlightedText } from "../../syntax/shiki";
@@ -42,45 +43,23 @@ function renderHighlightedPreviewEntries(
   invalidate?: () => void,
   lineNumbers?: { firstLine: number; lineNumberWidth?: number },
 ): { lines: string[]; shown: number; hidden: number } {
-  const lines: string[] = [];
   const lineNumberOptions =
     lineNumbers && codePreviewSettings.readLineNumbers ? lineNumbers : undefined;
-  let chunk: Array<{ line: string; index: number }> = [];
-
-  function flushChunk(): void {
-    if (chunk.length === 0) return;
+  return renderChunkedPreviewEntries(preview, theme, (chunk) => {
     const normalizedChunk = chunk.map((entry) => entry.line.replace(/\t/g, "   "));
     const highlighted = renderHighlightedText(normalizedChunk.join("\n"), lang, theme, invalidate);
-    for (let index = 0; index < chunk.length; index++) {
+    return chunk.map((entry, index) => {
       const rendered =
         highlighted[index] ??
         theme.fg("toolOutput", escapeControlChars(normalizedChunk[index] ?? ""));
-      if (!lineNumberOptions) {
-        lines.push(rendered);
-        continue;
-      }
+      if (!lineNumberOptions) return rendered;
       const width =
         lineNumberOptions.lineNumberWidth ??
-        String(lineNumberOptions.firstLine + chunk[index]!.index).length;
-      const lineNumber = String(lineNumberOptions.firstLine + chunk[index]!.index).padStart(
-        width,
-        " ",
-      );
-      lines.push(`${theme.fg("dim", `${lineNumber} │ `)}${rendered}`);
-    }
-    chunk = [];
-  }
-
-  for (const entry of preview.entries) {
-    if (entry.kind === "hidden") {
-      flushChunk();
-      lines.push(hiddenLinesMarker(theme, entry.hidden));
-    } else {
-      chunk.push({ line: entry.line, index: entry.index });
-    }
-  }
-  flushChunk();
-  return { lines, shown: preview.shown, hidden: preview.hidden };
+        String(lineNumberOptions.firstLine + entry.index).length;
+      const lineNumber = String(lineNumberOptions.firstLine + entry.index).padStart(width, " ");
+      return `${theme.fg("dim", `${lineNumber} │ `)}${rendered}`;
+    });
+  });
 }
 
 export function renderSelectedOutputLines(
@@ -89,9 +68,18 @@ export function renderSelectedOutputLines(
   theme: Theme,
   renderChunk: (chunk: string[]) => string[],
 ): { lines: string[]; shown: number; hidden: number } {
-  const preview = selectPreviewLines(rawLines, limit);
+  return renderChunkedPreviewEntries(selectPreviewLines(rawLines, limit), theme, (chunk) =>
+    renderChunk(chunk.map((entry) => entry.line)),
+  );
+}
+
+function renderChunkedPreviewEntries<T>(
+  preview: { entries: Array<PreviewLineEntry<T>>; shown: number; hidden: number },
+  theme: Theme,
+  renderChunk: (chunk: Array<{ line: T; index: number }>) => string[],
+): { lines: string[]; shown: number; hidden: number } {
   const lines: string[] = [];
-  let chunk: string[] = [];
+  let chunk: Array<{ line: T; index: number }> = [];
 
   function flushChunk(): void {
     if (chunk.length === 0) return;
@@ -104,7 +92,7 @@ export function renderSelectedOutputLines(
       flushChunk();
       lines.push(hiddenLinesMarker(theme, entry.hidden));
     } else {
-      chunk.push(entry.line);
+      chunk.push({ line: entry.line, index: entry.index });
     }
   }
   flushChunk();

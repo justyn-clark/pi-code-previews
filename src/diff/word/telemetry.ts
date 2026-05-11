@@ -1,22 +1,7 @@
 import { splitLinesLimited } from "../../shared/text-lines";
-import {
-  changedLineTokens,
-  indexedChangedLine,
-  matchChangedLines,
-  normalizedChangedContent,
-} from "../line-matching";
-import {
-  isAddedDiffLine,
-  isChangedDiffLine,
-  isRemovedDiffLine,
-  parseDiffLine,
-  type ParsedDiffLine,
-} from "../parse";
-import {
-  changedRangesForTokensWithConfidence,
-  shouldEmphasizeChangedPair,
-  type WordChangeConfidence,
-} from "./emphasis";
+import { analyzeChangedLineBlock } from "./change-block";
+import { isChangedDiffLine, parseDiffLine, type ParsedDiffLine } from "../parse";
+import { shouldEmphasizeChangedPair, type WordChangeConfidence } from "./emphasis";
 
 export type WordEmphasisTelemetry = {
   changedBlocks: number;
@@ -67,37 +52,17 @@ function emptyWordEmphasisTelemetry(): WordEmphasisTelemetry {
 }
 
 function addChangeBlockTelemetry(block: ParsedDiffLine[], telemetry: WordEmphasisTelemetry): void {
-  const removed = block.flatMap((line, index) =>
-    isRemovedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
-  );
-  const added = block.flatMap((line, index) =>
-    isAddedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
-  );
+  const analysis = analyzeChangedLineBlock(block);
   telemetry.changedBlocks++;
-  telemetry.changedLines.removed += removed.length;
-  telemetry.changedLines.added += added.length;
-  const removedByIndex = new Map(removed.map((line) => [line.index, line]));
-  const addedByIndex = new Map(added.map((line) => [line.index, line]));
-  const pairs = matchChangedLines(removed, added);
+  telemetry.changedLines.removed += analysis.removed.length;
+  telemetry.changedLines.added += analysis.added.length;
   telemetry.skippedPotentialPairs += Math.max(
     0,
-    Math.min(removed.length, added.length) - pairs.length,
+    Math.min(analysis.removed.length, analysis.added.length) - analysis.pairs.length,
   );
 
-  for (const pair of pairs) {
-    telemetry.pairConfidence[pair.confidence]++;
-    const removedLine = removedByIndex.get(pair.removedIndex);
-    const addedLine = addedByIndex.get(pair.addedIndex);
-    if (!removedLine || !addedLine) {
-      telemetry.skippedPairs++;
-      continue;
-    }
-    const ranges = changedRangesForTokensWithConfidence(
-      normalizedChangedContent(removedLine),
-      normalizedChangedContent(addedLine),
-      changedLineTokens(removedLine),
-      changedLineTokens(addedLine),
-    );
+  for (const pair of analysis.pairs) telemetry.pairConfidence[pair.confidence]++;
+  for (const { pair, ranges } of analysis.ranges) {
     telemetry.rangeConfidence[ranges.confidence]++;
     if (shouldEmphasizeChangedPair(ranges, pair.confidence)) telemetry.emphasizedPairs++;
     else telemetry.skippedPairs++;

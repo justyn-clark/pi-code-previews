@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { hashString } from "../../cache/hash";
+import { AsyncPreview, shouldRenderAsync } from "../../preview/async";
 import { codePreviewSettings } from "../../settings/index";
 
 let themeCacheIdCounter = 0;
@@ -19,6 +20,24 @@ export function cachedPreview(
     state[componentName] = create();
   }
   return state[componentName] as Component;
+}
+
+export function cachedAsyncPreview(
+  state: Record<string, unknown>,
+  keyName: string,
+  componentName: string,
+  key: string,
+  source: string,
+  loadingLabel: string,
+  theme: Theme,
+  render: () => Component,
+  invalidate: () => void,
+): Component {
+  return cachedPreview(state, keyName, componentName, key, () =>
+    shouldRenderAsync(source)
+      ? new AsyncPreview(loadingLabel, theme, render, invalidate)
+      : render(),
+  );
 }
 
 export function previewCacheKey(

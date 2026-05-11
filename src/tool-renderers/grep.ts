@@ -14,7 +14,8 @@ import { codePreviewSettings } from "../settings/index";
 import { shouldSkipHighlight } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
 import { renderSelectedOutputLines } from "./shared/preview-text";
-import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
+import { createCodePreviewToolShell } from "../preview/tool-shell";
+import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
 
 export function registerGrep(pi: ExtensionAPI, cwd: string) {
   const originalGrep = createGrepToolDefinition(cwd);
@@ -41,17 +42,22 @@ export function registerGrep(pi: ExtensionAPI, cwd: string) {
 
     renderResult(result, { expanded, isPartial }, theme, context) {
       return previewShell.renderResult(context, theme, (renderContext) => {
-        if (isPartial) return new Text(theme.fg("warning", "Searching…"), 0, 0);
         const output = trimSingleTrailingNewline(getTextContent(result.content));
-        if (renderContext.isError) {
-          return new Text(
-            theme.fg("error", escapeControlChars(output.split("\n")[0] || "Grep failed")),
-            0,
-            0,
-          );
-        }
-        if (!expanded && !codePreviewSettings.grepResultPreview)
-          return renderHiddenPreviewExpandHint(renderContext.state, theme);
+        const prelude = renderResultPrelude({
+          isPartial,
+          theme,
+          loadingLabel: "Searching…",
+          isError: renderContext.isError,
+          errorText: output.split("\n")[0] || "Grep failed",
+        });
+        if (prelude) return prelude;
+        const hiddenPrelude = renderHiddenPreviewPrelude({
+          expanded,
+          state: renderContext.state,
+          theme,
+          hidePreview: !codePreviewSettings.grepResultPreview,
+        });
+        if (hiddenPrelude) return hiddenPrelude;
         if (!output || output === "No matches found")
           return new Text(theme.fg("muted", output || "No matches found"), 0, 0);
 

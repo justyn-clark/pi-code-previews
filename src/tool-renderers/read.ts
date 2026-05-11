@@ -2,15 +2,15 @@ import type { ExtensionAPI, ReadToolOptions } from "@earendil-works/pi-coding-ag
 import { createReadToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { getPathArg, getReadStartLine, getTextContent, isTruncated } from "../tool-data";
-import { metadata, previewFooter, showingFooter } from "../preview/format";
+import { metadata, previewFooter } from "../preview/format";
 import { resolvePreviewLanguage } from "../syntax/language";
 import { renderDisplayPath } from "../paths/display";
 import { codePreviewSettings } from "../settings/index";
-import { normalizeShikiLanguage, shouldSkipHighlight } from "../syntax/shiki";
+import { normalizeShikiLanguage } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
-import { renderHighlightedPreviewText } from "./shared/preview-text";
-import { withSecretWarning } from "./shared/secret-preview";
-import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
+import { renderContentPreview } from "./shared/content-preview";
+import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
+import { createCodePreviewToolShell } from "../preview/tool-shell";
 
 export function registerRead(pi: ExtensionAPI, cwd: string, options?: ReadToolOptions) {
   const originalRead = createReadToolDefinition(cwd, options);
@@ -37,15 +37,15 @@ export function registerRead(pi: ExtensionAPI, cwd: string, options?: ReadToolOp
 
     renderResult(result, { expanded, isPartial }, theme, context) {
       return previewShell.renderResult(context, theme, (renderContext) => {
-        if (isPartial) return new Text(theme.fg("warning", "Reading…"), 0, 0);
         const firstText = getTextContent(result.content);
-        if (renderContext.isError) {
-          return new Text(
-            theme.fg("error", escapeControlChars(firstText.split("\n")[0] || "Read failed")),
-            0,
-            0,
-          );
-        }
+        const prelude = renderResultPrelude({
+          isPartial,
+          theme,
+          loadingLabel: "Reading…",
+          isError: renderContext.isError,
+          errorText: firstText.split("\n")[0] || "Read failed",
+        });
+        if (prelude) return prelude;
 
         const path = getPathArg(renderContext.args);
 
@@ -59,33 +59,30 @@ export function registerRead(pi: ExtensionAPI, cwd: string, options?: ReadToolOp
           );
         }
 
-        if (!expanded && !codePreviewSettings.readContentPreview)
-          return renderHiddenPreviewExpandHint(renderContext.state, theme);
+        const hiddenPrelude = renderHiddenPreviewPrelude({
+          expanded,
+          state: renderContext.state,
+          theme,
+          hidePreview: !codePreviewSettings.readContentPreview,
+        });
+        if (hiddenPrelude) return hiddenPrelude;
 
         const lang = resolvePreviewLanguage({
           path,
           content: firstText,
           piLanguage: getLanguageFromPath(path),
         });
-        const firstLine = getReadStartLine(renderContext.args);
-        const limit = expanded ? 0 : codePreviewSettings.readCollapsedLines;
-        const skipHighlight = shouldSkipHighlight(firstText);
-        const preview = renderHighlightedPreviewText(
-          firstText,
-          limit,
-          skipHighlight ? undefined : lang,
+        const preview = renderContentPreview({
+          content: firstText,
+          limit: expanded ? 0 : codePreviewSettings.readCollapsedLines,
+          lang,
           theme,
-          renderContext.invalidate,
-          { firstLine },
-        );
-
-        let text = preview.lines.length
-          ? withSecretWarning(firstText, theme, preview.lines.join("\n"))
-          : theme.fg("muted", "Empty file");
-        if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
-
-        if (skipHighlight)
-          text += previewFooter(theme, "Syntax highlighting skipped for large file");
+          invalidate: renderContext.invalidate,
+          lineNumbers: { firstLine: getReadStartLine(renderContext.args) },
+          emptyLabel: "Empty file",
+          skipHighlightLabel: "Syntax highlighting skipped for large file",
+        });
+        let text = preview.text;
         if (isTruncated(result.details)) text += previewFooter(theme, "Output truncated by read");
         return new Text(text, 0, 0);
       });

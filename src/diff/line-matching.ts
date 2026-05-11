@@ -54,7 +54,7 @@ function changedLineSimilarityFeatureValues(
   ));
 }
 
-type ChangedLinePair = {
+export type ChangedLinePair = {
   removedIndex: number;
   addedIndex: number;
   confidence: WordChangeConfidence;
@@ -73,15 +73,11 @@ export function matchChangedLines(
   if (removed.length === 0 || added.length === 0) return [];
   if (removed.length * added.length > MAX_CHANGED_LINE_PAIR_CELLS)
     return matchChangedLinesByPosition(removed, added);
-  const tokenWeight = similarityTokenWeight(removed, added);
-  const scores = removed.map((removedLine) =>
-    added.map((addedLine) =>
-      tokenSimilarity(
-        changedLineSimilarityFeatureValues(removedLine),
-        changedLineSimilarityFeatureValues(addedLine),
-        tokenWeight,
-      ),
-    ),
+  const similarityDocuments = changedLineSimilarityDocuments(removed, added);
+  const tokenWeight = similarityTokenWeight(similarityDocuments);
+  const { removedFeatures, addedFeatures } = similarityDocuments;
+  const scores = removedFeatures.map((beforeTokens) =>
+    addedFeatures.map((afterTokens) => tokenSimilarity(beforeTokens, afterTokens, tokenWeight)),
   );
   const dp = Array.from({ length: removed.length + 1 }, () =>
     Array.from({ length: added.length + 1 }, () => 0),
@@ -152,8 +148,8 @@ export function matchChangedLinesByPosition(
   added: Array<IndexedChangedLine<AddedDiffLine>>,
 ): ChangedLinePair[] {
   const pairs: ChangedLinePair[] = [];
-  const tokenWeight = similarityTokenWeight(removed, added);
-  const featureDocumentCounts = similarityFeatureDocumentCounts(removed, added);
+  const similarityDocuments = changedLineSimilarityDocuments(removed, added);
+  const tokenWeight = similarityTokenWeight(similarityDocuments);
   const canCheckAmbiguity =
     removed.length * added.length <= MAX_POSITIONAL_FALLBACK_AMBIGUITY_CELLS;
   const scoreCache = new Map<string, number>();
@@ -173,7 +169,7 @@ export function matchChangedLinesByPosition(
   for (let index = 0; index < Math.min(removed.length, added.length); index++) {
     const score = scoreAt(index, index);
     if (score < MIN_POSITIONAL_FALLBACK_PAIR_SCORE) continue;
-    if (hasUniqueSharedSimilarityFeature(removed[index]!, added[index]!, featureDocumentCounts)) {
+    if (hasUniqueSharedSimilarityFeature(removed[index]!, added[index]!, similarityDocuments)) {
       pairs.push({
         removedIndex: removed[index]!.index,
         addedIndex: added[index]!.index,
@@ -227,27 +223,35 @@ function competingChangedLineScoreByPosition(
   return competingScore;
 }
 
-function similarityFeatureDocumentCounts(
+type ChangedLineSimilarityDocuments = {
+  removedFeatures: string[][];
+  addedFeatures: string[][];
+  documentCounts: Map<string, number>;
+};
+
+function changedLineSimilarityDocuments(
   removed: Array<IndexedChangedLine<RemovedDiffLine>>,
   added: Array<IndexedChangedLine<AddedDiffLine>>,
-): Map<string, number> {
+): ChangedLineSimilarityDocuments {
+  const removedFeatures = removed.map(changedLineSimilarityFeatureValues);
+  const addedFeatures = added.map(changedLineSimilarityFeatureValues);
   const documentCounts = new Map<string, number>();
-  for (const line of [...removed, ...added]) {
-    for (const feature of new Set(changedLineSimilarityFeatureValues(line)))
+  for (const features of [...removedFeatures, ...addedFeatures]) {
+    for (const feature of new Set(features))
       documentCounts.set(feature, (documentCounts.get(feature) ?? 0) + 1);
   }
-  return documentCounts;
+  return { removedFeatures, addedFeatures, documentCounts };
 }
 
 function hasUniqueSharedSimilarityFeature(
   removed: IndexedChangedLine<RemovedDiffLine>,
   added: IndexedChangedLine<AddedDiffLine>,
-  documentCounts: Map<string, number>,
+  documents: ChangedLineSimilarityDocuments,
 ): boolean {
   const addedFeatures = new Set(changedLineSimilarityFeatureValues(added));
   for (const feature of new Set(changedLineSimilarityFeatureValues(removed))) {
     if (!addedFeatures.has(feature)) continue;
-    if (documentCounts.get(feature) === 2 && tokenWeight(feature) >= 1) return true;
+    if (documents.documentCounts.get(feature) === 2 && tokenWeight(feature) >= 1) return true;
   }
   return false;
 }
@@ -281,22 +285,13 @@ function isSimilarityShingleToken(token: string): boolean {
   return wordEmphasisTokenWeight(token) >= 1;
 }
 
-function similarityTokenWeight(
-  removed: Array<IndexedChangedLine<RemovedDiffLine>>,
-  added: Array<IndexedChangedLine<AddedDiffLine>>,
-): SimilarityTokenWeight {
-  const featureLists = [...removed, ...added].map(changedLineSimilarityFeatureValues);
-  const documentCounts = new Map<string, number>();
-  for (const features of featureLists) {
-    for (const feature of new Set(features))
-      documentCounts.set(feature, (documentCounts.get(feature) ?? 0) + 1);
-  }
-  const lineCount = featureLists.length;
+function similarityTokenWeight(documents: ChangedLineSimilarityDocuments): SimilarityTokenWeight {
   const weights = new Map<string, number>();
+  const lineCount = documents.removedFeatures.length + documents.addedFeatures.length;
   return (token) => {
     const cached = weights.get(token);
     if (cached !== undefined) return cached;
-    const documentCount = documentCounts.get(token) ?? lineCount;
+    const documentCount = documents.documentCounts.get(token) ?? lineCount;
     const rarity = Math.min(3, 1 + Math.log((lineCount + 1) / (documentCount + 1)));
     const weight = tokenWeight(token) * rarity;
     weights.set(token, weight);

@@ -41,23 +41,12 @@ export function createStructuredDiff(before: string, after: string): StructuredD
       const hasFutureChange = hasChangeAfter[index] ?? false;
       if (!emittedChange && hasFutureChange) {
         const start = Math.max(0, chunkLines.length - context);
-        for (let offset = start; offset < chunkLines.length; offset++)
-          lines.push({
-            kind: "context",
-            oldLine: oldLine + offset,
-            newLine: newLine + offset,
-            content: chunkLines[offset] ?? "",
-          });
+        lines.push(...contextLines(chunkLines.slice(start), oldLine + start, newLine + start));
       } else if (emittedChange) {
         lines.push(
           ...(hasFutureChange
             ? compactContextLines(chunkLines, oldLine, newLine, context)
-            : chunkLines.slice(0, context).map((line, offset) => ({
-                kind: "context" as const,
-                oldLine: oldLine + offset,
-                newLine: newLine + offset,
-                content: line,
-              }))),
+            : contextLines(chunkLines.slice(0, context), oldLine, newLine)),
         );
       }
       oldLine += chunkLines.length;
@@ -99,26 +88,28 @@ function compactContextLines(
   newFirstLine: number,
   context: number,
 ): StructuredDiffLine[] {
-  if (lines.length <= context * 2)
-    return lines.map((line, offset) => ({
-      kind: "context",
-      oldLine: oldFirstLine + offset,
-      newLine: newFirstLine + offset,
-      content: line,
-    }));
+  if (lines.length <= context * 2) return contextLines(lines, oldFirstLine, newFirstLine);
   return [
-    ...lines.slice(0, context).map((line, offset) => ({
-      kind: "context" as const,
-      oldLine: oldFirstLine + offset,
-      newLine: newFirstLine + offset,
-      content: line,
-    })),
+    ...contextLines(lines.slice(0, context), oldFirstLine, newFirstLine),
     { kind: "separator", content: "..." } satisfies StructuredDiffLine,
-    ...lines.slice(-context).map((line, offset) => ({
-      kind: "context" as const,
-      oldLine: oldFirstLine + lines.length - context + offset,
-      newLine: newFirstLine + lines.length - context + offset,
-      content: line,
-    })),
+    ...contextLines(
+      lines.slice(-context),
+      oldFirstLine + lines.length - context,
+      newFirstLine + lines.length - context,
+    ),
   ];
+}
+
+function contextLines(
+  lines: string[],
+  oldFirstLine: number,
+  newFirstLine: number,
+): StructuredDiffLine[] {
+  return lines.map((line, offset) =>
+    contextLine(line, oldFirstLine + offset, newFirstLine + offset),
+  );
+}
+
+function contextLine(content: string, oldLine: number, newLine: number): StructuredDiffLine {
+  return { kind: "context", oldLine, newLine, content };
 }

@@ -1,7 +1,6 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createEditToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component } from "@earendil-works/pi-tui";
-import { AsyncPreview, shouldRenderAsync } from "../preview/async";
 import { getEditDiff, getEditPreviewOperations, getPathArg, getTextContent } from "../tool-data";
 import { FullWidthDiffText } from "../diff/index";
 import { createSimpleDiff } from "../diff/structured";
@@ -18,7 +17,7 @@ import {
   diffPreviewLineLimit,
   renderDiffPreviewBody,
 } from "./shared/diff-preview";
-import { cachedPreview, previewArgsKey, previewCacheKey } from "./shared/cache";
+import { cachedAsyncPreview, previewArgsKey, previewCacheKey } from "./shared/cache";
 import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
 
 export function registerEdit(pi: ExtensionAPI, cwd: string) {
@@ -69,26 +68,28 @@ export function registerEdit(pi: ExtensionAPI, cwd: string) {
           renderContext.expanded,
           theme,
         );
-        if (renderContext.state.editCallPreviewKey !== previewKey) {
-          renderContext.state.editCallPreviewKey = previewKey;
-          const render = () =>
-            renderEditCallPreview(
-              operations,
-              path,
-              renderContext.expanded,
-              theme,
-              renderContext.invalidate,
-            );
-          renderContext.state.editCallPreviewComponent = shouldRenderAsync(operationsSource)
-            ? new AsyncPreview(
-                "Rendering proposed edit diff…",
-                theme,
-                render,
-                renderContext.invalidate,
-              )
-            : render();
-        }
-        return new HeaderAndBody(text, renderContext.state.editCallPreviewComponent as Component);
+        const render = () =>
+          renderEditCallPreview(
+            operations,
+            path,
+            renderContext.expanded,
+            theme,
+            renderContext.invalidate,
+          );
+        return new HeaderAndBody(
+          text,
+          cachedAsyncPreview(
+            renderContext.state,
+            "editCallPreviewKey",
+            "editCallPreviewComponent",
+            previewKey,
+            operationsSource,
+            "Rendering proposed edit diff…",
+            theme,
+            render,
+            renderContext.invalidate,
+          ),
+        );
       });
     },
 
@@ -141,15 +142,16 @@ export function registerEdit(pi: ExtensionAPI, cwd: string) {
             renderContext.invalidate,
           );
         const previewKey = previewCacheKey("edit-result", diff, filePath, expanded, theme);
-        return cachedPreview(
+        return cachedAsyncPreview(
           renderContext.state,
           "editResultPreviewKey",
           "editResultPreviewComponent",
           previewKey,
-          () =>
-            shouldRenderAsync(diff)
-              ? new AsyncPreview("Rendering edit diff…", theme, render, renderContext.invalidate)
-              : render(),
+          diff,
+          "Rendering edit diff…",
+          theme,
+          render,
+          renderContext.invalidate,
         );
       });
     },

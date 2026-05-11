@@ -16,7 +16,8 @@ import { renderHighlightedText } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
 import { shouldHideBashResult } from "./bash-preview-policy";
 import { withSecretWarning } from "./shared/secret-preview";
-import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
+import { createCodePreviewToolShell } from "../preview/tool-shell";
+import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
 
 export function registerBash(pi: ExtensionAPI, cwd: string, options?: BashToolOptions) {
   const originalBash = createBashToolDefinition(cwd, options);
@@ -52,9 +53,19 @@ export function registerBash(pi: ExtensionAPI, cwd: string, options?: BashToolOp
 
     renderResult(result, { expanded, isPartial }, theme, context) {
       return previewShell.renderResult(context, theme, (renderContext) => {
-        if (isPartial) return new Text(theme.fg("warning", "Running…"), 0, 0);
-        if (!expanded && !renderContext.isError && shouldHideBashResult(renderContext.args))
-          return renderHiddenPreviewExpandHint(renderContext.state, theme);
+        const prelude = renderResultPrelude({
+          isPartial,
+          theme,
+          loadingLabel: "Running…",
+        });
+        if (prelude) return prelude;
+        const hiddenPrelude = renderHiddenPreviewPrelude({
+          expanded,
+          state: renderContext.state,
+          theme,
+          hidePreview: !renderContext.isError && shouldHideBashResult(renderContext.args),
+        });
+        if (hiddenPrelude) return hiddenPrelude;
         const output = trimSingleTrailingNewline(getTextContent(result.content));
         const lines = output
           ? output

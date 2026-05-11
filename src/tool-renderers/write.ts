@@ -1,18 +1,17 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createWriteToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { AsyncPreview, shouldRenderAsync } from "../preview/async";
 import { getPathArg, getTextContent } from "../tool-data";
 import { FullWidthDiffText } from "../diff/index";
 import { createSimpleDiff } from "../diff/structured";
 import { describeDiffShape, diffSummarySeparator, summarizeDiff } from "../diff/summary";
 import { countContentLines } from "../preview/line-counts";
 import { countLabel, formatBytes } from "../shared/format";
-import { metadata, previewFooter, showingFooter } from "../preview/format";
+import { metadata } from "../preview/format";
 import { resolvePreviewLanguage } from "../syntax/language";
 import { renderDisplayPath } from "../paths/display";
 import { codePreviewSettings } from "../settings/index";
-import { getShikiStatus, normalizeShikiLanguage, shouldSkipHighlight } from "../syntax/shiki";
+import { getShikiStatus, normalizeShikiLanguage } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
 import {
   getWriteDiffSkipReason,
@@ -23,9 +22,8 @@ import {
 import { runSerializedWritePreview } from "../write/preview-queue";
 import { getObjectValue } from "../shared/objects";
 import { createDiffPreviewText, diffPreviewLineLimit } from "./shared/diff-preview";
-import { cachedPreview, previewCacheKey } from "./shared/cache";
-import { renderHighlightedPreviewText } from "./shared/preview-text";
-import { withSecretWarning } from "./shared/secret-preview";
+import { cachedAsyncPreview, cachedPreview, previewCacheKey } from "./shared/cache";
+import { renderContentPreview } from "./shared/content-preview";
 import { createCodePreviewToolShell, hiddenPreviewExpandHintForShell } from "../preview/tool-shell";
 
 export function registerWrite(pi: ExtensionAPI, cwd: string) {
@@ -148,15 +146,16 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
             );
           const source = `${beforeContent}\0${content}`;
           const previewKey = previewCacheKey("write-result", source, path, expanded, theme);
-          return cachedPreview(
+          return cachedAsyncPreview(
             renderContext.state,
             "writeResultPreviewKey",
             "writeResultPreviewComponent",
             previewKey,
-            () =>
-              shouldRenderAsync(source)
-                ? new AsyncPreview("Rendering write diff…", theme, render, renderContext.invalidate)
-                : render(),
+            source,
+            "Rendering write diff…",
+            theme,
+            render,
+            renderContext.invalidate,
           );
         }
         if (typeof beforeContent === "string")
@@ -201,24 +200,20 @@ function renderWriteCallPreview(
     content,
     piLanguage: getLanguageFromPath(path),
   });
-  const limit = expanded ? 0 : codePreviewSettings.writeCollapsedLines;
-  const skipHighlight = shouldSkipHighlight(content);
-  const preview = renderHighlightedPreviewText(
+  const preview = renderContentPreview({
     content,
-    limit,
-    skipHighlight ? undefined : lang,
+    limit: expanded ? 0 : codePreviewSettings.writeCollapsedLines,
+    lang,
     theme,
     invalidate,
+    emptyLabel: "Empty content",
+    skipHighlightLabel: "Syntax highlighting skipped for large content",
+  });
+  return new Text(
+    `${formatWriteCallHeader(content, path, cwd, theme, lang, preview.total)}\n${preview.text}`,
+    0,
+    0,
   );
-
-  let text = formatWriteCallHeader(content, path, cwd, theme, lang, preview.total);
-  const contentPreview = preview.lines.length
-    ? withSecretWarning(content, theme, preview.lines.join("\n"))
-    : theme.fg("muted", "Empty content");
-  text += `\n${contentPreview}`;
-  if (preview.hidden > 0) text += showingFooter(theme, preview.shown, preview.total, "lines");
-  if (skipHighlight) text += previewFooter(theme, "Syntax highlighting skipped for large content");
-  return new Text(text, 0, 0);
 }
 
 function formatWriteCallHeader(
