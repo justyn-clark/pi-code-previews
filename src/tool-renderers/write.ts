@@ -1,11 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import {
-  createWriteToolDefinition,
-  getLanguageFromPath,
-  withFileMutationQueue,
-} from "@earendil-works/pi-coding-agent";
+import { createWriteToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { getPathArg, getTextContent } from "../tool-data";
 import {
@@ -23,13 +17,14 @@ import { renderDisplayPath } from "../paths/display";
 import { codePreviewSettings } from "../settings/index";
 import { normalizeShikiLanguage } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
-import {
-  getWriteDiffSkipReason,
-  readExistingFileForPreview,
-  shouldSkipWriteDiffBytes,
-} from "../write/diff";
-import { resolvePreviewPath } from "../paths/resolve";
+import { getWriteDiffSkipReason, shouldSkipWriteDiffBytes } from "../write/diff";
 import { getObjectValue } from "../shared/objects";
+import {
+  executeWriteWithPreview,
+  getCodePreviewBeforeWrite,
+  readCodePreviewBeforeWrite,
+  withCodePreviewBeforeWrite,
+} from "../write/preview-execution";
 import { createDiffPreviewText, diffPreviewLineLimit } from "./shared/diff-preview";
 import {
   cachedAsyncPreview,
@@ -53,7 +48,7 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       const content = getObjectValue(params, "content");
       if (!path || typeof content !== "string") {
         const before = path
-          ? await readExistingFileForPreview(path, cwd, typeof content === "string" ? content : "")
+          ? await readCodePreviewBeforeWrite(path, cwd, typeof content === "string" ? content : "")
           : undefined;
         const result = await originalWrite.execute(toolCallId, params, signal, onUpdate, ctx);
         return withCodePreviewBeforeWrite(result, before);
@@ -115,7 +110,7 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
         const path = getPathArg(renderContext.args);
         const content =
           typeof renderContext.args?.content === "string" ? renderContext.args.content : "";
-        const before = getObjectValue(result.details, "codePreviewBeforeWrite");
+        const before = getCodePreviewBeforeWrite(result.details);
         const beforeContent = getObjectValue(before, "content");
         const skipReason = getWriteDiffSkipReason(before, content);
         if (skipReason)
@@ -179,71 +174,6 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
 
 function formatOptionalHiddenHint(hint: string): string {
   return hint ? `\n${hint}` : "";
-}
-
-async function executeWriteWithPreview(
-  path: string,
-  content: string,
-  cwd: string,
-  signal: AbortSignal | undefined,
-) {
-  const absolutePath = resolvePreviewPath(path, cwd);
-  return withFileMutationQueue(absolutePath, () =>
-    executeWriteWithPreviewLock(path, content, cwd, absolutePath, signal),
-  );
-}
-
-function executeWriteWithPreviewLock(
-  path: string,
-  content: string,
-  cwd: string,
-  absolutePath: string,
-  signal: AbortSignal | undefined,
-) {
-  return new Promise<{
-    content: Array<{ type: "text"; text: string }>;
-    details: { codePreviewBeforeWrite: Awaited<ReturnType<typeof readExistingFileForPreview>> };
-  }>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("Operation aborted"));
-      return;
-    }
-    let aborted = false;
-    const onAbort = () => {
-      aborted = true;
-      reject(new Error("Operation aborted"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    (async () => {
-      try {
-        const before = await readExistingFileForPreview(path, cwd, content);
-        if (aborted) return;
-        await mkdir(dirname(absolutePath), { recursive: true });
-        if (aborted) return;
-        await writeFile(absolutePath, content, "utf-8");
-        if (aborted) return;
-        signal?.removeEventListener("abort", onAbort);
-        resolve({
-          content: [
-            { type: "text", text: `Successfully wrote ${content.length} bytes to ${path}` },
-          ],
-          details: { codePreviewBeforeWrite: before },
-        });
-      } catch (error) {
-        signal?.removeEventListener("abort", onAbort);
-        if (!aborted) reject(error);
-      }
-    })();
-  });
-}
-
-function withCodePreviewBeforeWrite<T extends { details?: unknown }>(
-  result: T,
-  before: Awaited<ReturnType<typeof readExistingFileForPreview>>,
-): T & { details: Record<string, unknown> } {
-  const details = result.details && typeof result.details === "object" ? result.details : {};
-  return { ...result, details: { ...details, codePreviewBeforeWrite: before } };
 }
 
 function renderWriteCallPreview(

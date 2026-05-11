@@ -93,7 +93,7 @@ try {
       results.push(
         runBench(benchCase.name, "word-ranges", mode, () => {
           for (const pair of benchCase.rangePairs) {
-            const ranges = changedRanges(pair.before, pair.after);
+            const ranges = changedRanges(pair.before, pair.after, mode);
             sink += ranges.removed.length + ranges.added.length;
           }
         }),

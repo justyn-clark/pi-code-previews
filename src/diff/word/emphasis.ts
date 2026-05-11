@@ -1,4 +1,4 @@
-import { codePreviewSettings } from "../../settings/index";
+import type { DiffWordEmphasis } from "../../settings/types";
 import {
   mergeRanges,
   mergeRangesByStart,
@@ -37,19 +37,25 @@ export function shouldEmphasizeChangedPair(
   return true;
 }
 
-export function changedRanges(before: string, after: string): WordChangeRanges {
-  return stripWordChangeConfidence(changedRangesWithConfidence(before, after));
+export function changedRanges(
+  before: string,
+  after: string,
+  wordEmphasis: DiffWordEmphasis,
+): WordChangeRanges {
+  return stripWordChangeConfidence(changedRangesWithConfidence(before, after, wordEmphasis));
 }
 
 export function changedRangesWithConfidence(
   before: string,
   after: string,
+  wordEmphasis: DiffWordEmphasis,
 ): ConfidentWordChangeRanges {
   return changedRangesForTokensWithConfidence(
     before,
     after,
     wordEmphasisTokens(before),
     wordEmphasisTokens(after),
+    wordEmphasis,
   );
 }
 
@@ -58,6 +64,7 @@ export function changedRangesForTokensWithConfidence(
   after: string,
   beforeTokens: WordEmphasisToken[],
   afterTokens: WordEmphasisToken[],
+  wordEmphasis: DiffWordEmphasis,
 ): ConfidentWordChangeRanges {
   const removedTokens = new Set<number>();
   const addedTokens = new Set<number>();
@@ -82,7 +89,7 @@ export function changedRangesForTokensWithConfidence(
   const confidence: WordChangeConfidence = hasWordChangeRanges(ranges)
     ? alignmentConfidence
     : "low";
-  if (codePreviewSettings.wordEmphasis !== "smart") return { ...ranges, confidence };
+  if (wordEmphasis !== "smart") return { ...ranges, confidence };
 
   const filtered = filterLowSignalWordEmphasis(before, after, ranges);
   return { ...filtered, confidence: hasWordChangeRanges(filtered) ? confidence : "low" };

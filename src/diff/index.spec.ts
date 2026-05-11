@@ -179,6 +179,7 @@ test("word emphasis narrows compound identifier changes to changed segments", ()
   const ranges = changedRanges(
     "const limit = readCollapsedLines;",
     "const limit = editCollapsedLines;",
+    "all",
   );
   assert.deepEqual(ranges.removed, [[14, 18]]);
   assert.deepEqual(ranges.added, [[14, 18]]);
@@ -186,11 +187,11 @@ test("word emphasis narrows compound identifier changes to changed segments", ()
 
 test("word emphasis narrows similar single-token edits", () => {
   setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
-  assert.deepEqual(changedRanges("value1000", "value1001"), {
+  assert.deepEqual(changedRanges("value1000", "value1001", "all"), {
     removed: [[8, 9]],
     added: [[8, 9]],
   });
-  assert.deepEqual(changedRanges("color", "colour"), {
+  assert.deepEqual(changedRanges("color", "colour", "all"), {
     removed: [],
     added: [[4, 5]],
   });
@@ -198,11 +199,11 @@ test("word emphasis narrows similar single-token edits", () => {
 
 test("word emphasis keeps unicode refinements on text boundaries", () => {
   setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
-  assert.deepEqual(changedRanges("a\u0301Value", "a\u0302Value"), {
+  assert.deepEqual(changedRanges("a\u0301Value", "a\u0302Value", "all"), {
     removed: [[0, 2]],
     added: [[0, 2]],
   });
-  assert.deepEqual(changedRanges("𐐀a", "𐐁a"), {
+  assert.deepEqual(changedRanges("𐐀a", "𐐁a", "all"), {
     removed: [[0, 2]],
     added: [[0, 2]],
   });
@@ -210,7 +211,7 @@ test("word emphasis keeps unicode refinements on text boundaries", () => {
 
 test("smart word emphasis keeps meaningful operator-only changes", () => {
   setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "smart" });
-  assert.deepEqual(changedRanges("if (count < limit)", "if (count <= limit)"), {
+  assert.deepEqual(changedRanges("if (count < limit)", "if (count <= limit)", "smart"), {
     removed: [],
     added: [[11, 12]],
   });
@@ -219,7 +220,7 @@ test("smart word emphasis keeps meaningful operator-only changes", () => {
 test("word emphasis softly aligns similar replacements inside multi-token groups", () => {
   setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: "all" });
   assert.deepEqual(
-    changedRanges("return oldValue + nextValue;", "return newValue - previousValue;"),
+    changedRanges("return oldValue + nextValue;", "return newValue - previousValue;", "all"),
     {
       removed: [
         [7, 10],
@@ -331,18 +332,19 @@ test("word emphasis is applied synchronously for large changed lines", () => {
 test("word range emphasis returns changed spans for unrelated token-heavy lines", () => {
   const before = Array.from({ length: 400 }, (_, index) => `before_${index}`).join(" ");
   const after = Array.from({ length: 400 }, (_, index) => `after_${index}`).join(" ");
-  const ranges = changedRanges(before, after);
+  const ranges = changedRanges(before, after, "smart");
   assert.deepEqual(ranges.removed, [[0, before.length]]);
   assert.deepEqual(ranges.added, [[0, after.length]]);
 });
 
 test("word range confidence distinguishes exact and fallback-heavy changes", () => {
   assert.equal(
-    changedRangesWithConfidence("const value = oldValue;", "const value = newValue;").confidence,
+    changedRangesWithConfidence("const value = oldValue;", "const value = newValue;", "smart")
+      .confidence,
     "high",
   );
 
   const before = Array.from({ length: 600 }, (_, index) => `before_${index}`).join(" ");
   const after = Array.from({ length: 600 }, (_, index) => `after_${index}`).join(" ");
-  assert.equal(changedRangesWithConfidence(before, after).confidence, "low");
+  assert.equal(changedRangesWithConfidence(before, after, "smart").confidence, "low");
 });

@@ -6,6 +6,7 @@ import {
   type ChangedLinePair,
   type IndexedChangedLine,
 } from "./line-matching";
+import type { DiffWordEmphasis } from "../../settings/types";
 import {
   isAddedDiffLine,
   isRemovedDiffLine,
@@ -28,7 +29,10 @@ export type ChangedLineRangePair = {
   ranges: ConfidentWordChangeRanges;
 };
 
-export function analyzeChangedLineBlock(block: ParsedDiffLine[]): ChangedLineBlockAnalysis {
+export function analyzeChangedLineBlock(
+  block: ParsedDiffLine[],
+  wordEmphasis: DiffWordEmphasis,
+): ChangedLineBlockAnalysis {
   const removed = block.flatMap((line, index) =>
     isRemovedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
   );
@@ -50,6 +54,7 @@ export function analyzeChangedLineBlock(block: ParsedDiffLine[]): ChangedLineBlo
         normalizedChangedContent(addedLine),
         changedLineTokens(removedLine),
         changedLineTokens(addedLine),
+        wordEmphasis,
       ),
     });
   }

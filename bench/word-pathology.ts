@@ -43,7 +43,7 @@ try {
       setCodePreviewSettings({ ...codePreviewSettings, wordEmphasis: mode });
       results.push(
         runBench(benchCase.name, "changedRanges", mode, () => {
-          const ranges = changedRanges(benchCase.before, benchCase.after);
+          const ranges = changedRanges(benchCase.before, benchCase.after, mode);
           sink += ranges.removed.length + ranges.added.length;
         }),
       );
@@ -149,7 +149,7 @@ function printConfidenceSummary(wordCases: WordCase[], pairingCases: PairingCase
   console.log("Word emphasis confidence summary");
   console.table(
     wordCases.map((benchCase) => {
-      const ranges = changedRangesWithConfidence(benchCase.before, benchCase.after);
+      const ranges = changedRangesWithConfidence(benchCase.before, benchCase.after, "smart");
       return {
         case: benchCase.name,
         confidence: ranges.confidence,
@@ -161,7 +161,7 @@ function printConfidenceSummary(wordCases: WordCase[], pairingCases: PairingCase
   console.log("Changed-line pair confidence summary");
   console.table(
     pairingCases.map((benchCase) => {
-      const telemetry = wordEmphasisTelemetry(benchCase.diff, benchCase.lines);
+      const telemetry = wordEmphasisTelemetry(benchCase.diff, benchCase.lines, "smart");
       return {
         case: benchCase.name,
         pairs: telemetry.emphasizedPairs,

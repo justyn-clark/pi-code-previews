@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { codePreviewSettings } from "../settings/index";
+import type { DiffWordEmphasis } from "../settings/types";
 import { expandPreviewTabs } from "../shared/preview-tabs";
 import { escapeControlChars } from "../shared/terminal-text";
 import { splitLinesLimited } from "../shared/text-lines";
@@ -28,7 +29,7 @@ export function renderSyntaxHighlightedDiff(
     limit,
     invalidate,
     syntaxHighlight: true,
-    emphasizeChangedPairs: codePreviewSettings.wordEmphasis !== "off",
+    wordEmphasis: codePreviewSettings.wordEmphasis,
   });
 }
 
@@ -37,7 +38,7 @@ export function renderPlainDiff(diff: string, theme: Theme, limit: number): stri
     theme,
     limit,
     syntaxHighlight: false,
-    emphasizeChangedPairs: false,
+    wordEmphasis: "off",
   });
 }
 
@@ -47,7 +48,7 @@ type DiffRenderOptions = {
   limit: number;
   invalidate?: () => void;
   syntaxHighlight: boolean;
-  emphasizeChangedPairs: boolean;
+  wordEmphasis: DiffWordEmphasis;
 };
 
 function renderDiff(diff: string, options: DiffRenderOptions): string {
@@ -65,10 +66,17 @@ function renderDiff(diff: string, options: DiffRenderOptions): string {
       continue;
     }
 
-    if (options.emphasizeChangedPairs && isChangedDiffLine(parsed)) {
+    if (options.wordEmphasis !== "off" && isChangedDiffLine(parsed)) {
       const { block, end } = collectChangedDiffBlock(parsedLines, i);
       out.push(
-        ...renderChangeBlock(block, lang, options.theme, lineNumberWidth, options.invalidate),
+        ...renderChangeBlock(
+          block,
+          lang,
+          options.theme,
+          lineNumberWidth,
+          options.wordEmphasis,
+          options.invalidate,
+        ),
       );
       i = end - 1;
       continue;
@@ -121,9 +129,10 @@ function renderChangeBlock(
   lang: string | undefined,
   theme: Theme,
   lineNumberWidth: number,
+  wordEmphasis: DiffWordEmphasis,
   invalidate?: () => void,
 ): string[] {
-  const emphasis = changedLineEmphasis(block);
+  const emphasis = changedLineEmphasis(block, wordEmphasis);
   return block.map((line, index) => {
     const rendered = renderDiffParsedLine(line, lang, theme, lineNumberWidth, invalidate);
     const match = emphasis.get(index);
