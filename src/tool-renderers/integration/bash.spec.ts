@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { defaultCodePreviewSettings, setCodePreviewSettings } from "../settings/index";
+import { defaultCodePreviewSettings, setCodePreviewSettings } from "../../settings/index";
 import {
   cloneCodePreviewSettingsForTest,
   renderComponent,
   stripAnsi,
   testTheme,
-} from "../testing/render";
-import { findRenderer, preserveCodePreviewToolsEnv, registerRenderers } from "./testing";
+} from "../../testing/render";
+import { findRenderer, preserveCodePreviewToolsEnv, registerRenderers } from "../testing";
 
 preserveCodePreviewToolsEnv();
 

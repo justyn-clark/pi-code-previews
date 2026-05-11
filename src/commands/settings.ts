@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createCodePreviewSettingsList } from "./settings-list";
+import { createCodePreviewSettingsList } from "./settings-panel";
 
 export function registerSettingsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("code-preview-settings", {
