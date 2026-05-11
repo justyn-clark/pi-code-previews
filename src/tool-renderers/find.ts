@@ -2,11 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createFindToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-import { renderDisplayPath } from "../paths";
-import { codePreviewSettings } from "../settings";
-import { escapeControlChars } from "../terminal-text";
-import { createCodePreviewToolShell } from "./common";
-import { renderPathListResult } from "./path-list-result";
+import { renderDisplayPath } from "../paths/display";
+import { codePreviewSettings } from "../settings/index";
+import { escapeControlChars } from "../preview/terminal-text";
+import { createCodePreviewToolShell } from "./shared/shell";
+import { renderPathListResult } from "./shared/path-list-result";
 
 export function registerFind(pi: ExtensionAPI, cwd: string) {
   const originalFind = createFindToolDefinition(cwd);

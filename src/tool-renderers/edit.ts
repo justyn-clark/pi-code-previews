@@ -1,30 +1,23 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createEditToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component } from "@earendil-works/pi-tui";
-import { AsyncPreview, shouldRenderAsync } from "../async-preview";
-import { getEditDiff, getObjectValue, getPathArg, getTextContent } from "../data";
+import { AsyncPreview, shouldRenderAsync } from "../preview/async";
+import { getEditDiff, getObjectValue, getPathArg, getTextContent } from "../tool-data";
+import { FullWidthDiffText } from "../diff/index";
+import { diffSummarySeparator, summarizeDiff, type DiffSummary } from "../diff/summary";
+import { countLabel, showingFooter } from "../preview/format";
+import { resolvePreviewLanguage } from "../syntax/language";
+import { renderDisplayPath } from "../paths/display";
+import { codePreviewSettings } from "../settings/index";
+import { escapeControlChars } from "../preview/terminal-text";
+import { createSimpleDiff } from "../write/diff";
 import {
-  createProgressiveSyntaxHighlightedDiffText,
-  FullWidthDiffText,
-  renderPlainDiff,
-  renderSyntaxHighlightedDiff,
-  summarizeDiff,
-} from "../diff";
-import { diffSummarySeparator, type DiffSummary } from "../diff-summary";
-import { countLabel, previewFooter, showingFooter } from "../format";
-import { resolvePreviewLanguage } from "../language";
-import { renderDisplayPath } from "../paths";
-import { codePreviewSettings } from "../settings";
-import { shouldSkipHighlight } from "../shiki";
-import { escapeControlChars } from "../terminal-text";
-import { createSimpleDiff } from "../write-diff";
-import {
-  cachedPreview,
-  createCodePreviewToolShell,
-  previewArgsKey,
-  previewCacheKey,
-  renderHiddenPreviewExpandHint,
-} from "./common";
+  appendDiffPreviewFooters,
+  createDiffPreviewText,
+  renderDiffPreviewBody,
+} from "./shared/diff-preview";
+import { cachedPreview, previewArgsKey, previewCacheKey } from "./shared/cache";
+import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "./shared/shell";
 
 export function registerEdit(pi: ExtensionAPI, cwd: string) {
   const originalEdit = createEditToolDefinition(cwd);
@@ -165,20 +158,12 @@ function renderEditDiffPreview(
   theme: Theme,
   invalidate?: () => void,
 ): FullWidthDiffText {
-  const skipSyntaxHighlight = shouldSkipHighlight(diff);
-  const footer = (body: string) => {
-    let text = body;
-    if (totalLines > limit) text += showingFooter(theme, limit, totalLines, "diff lines");
-    if (skipSyntaxHighlight)
-      text += previewFooter(theme, "Syntax highlighting skipped for large diff");
-    return text;
-  };
-  return skipSyntaxHighlight
-    ? new FullWidthDiffText(footer(renderPlainDiff(diff, theme, limit)), theme)
-    : createProgressiveSyntaxHighlightedDiffText(diff, lang, theme, limit, {
-        decorate: footer,
-        invalidate,
-      });
+  return createDiffPreviewText(diff, lang, theme, limit, {
+    totalLines,
+    hiddenLineNoun: "diff lines",
+    skipHighlightLabel: "Syntax highlighting skipped for large diff",
+    invalidate,
+  });
 }
 
 function getEditPreviewOperations(args: unknown): Array<{ oldText: string; newText: string }> {
@@ -238,14 +223,20 @@ function renderEditCallPreview(
       expanded || codePreviewSettings.editCollapsedLines === "all"
         ? summary.totalLines
         : (perOperationLimit ?? codePreviewSettings.editCollapsedLines);
-    const skipSyntaxHighlight = shouldSkipHighlight(diff);
-    let rendered = skipSyntaxHighlight
-      ? renderPlainDiff(diff, theme, limit)
-      : renderSyntaxHighlightedDiff(diff, lang, theme, limit, invalidate);
-    if (summary.totalLines > limit)
-      rendered += showingFooter(theme, limit, summary.totalLines, "proposed diff lines");
-    if (skipSyntaxHighlight)
-      rendered += previewFooter(theme, "Syntax highlighting skipped for large proposed diff");
+    const { body, syntaxHighlightSkipped } = renderDiffPreviewBody(
+      diff,
+      lang,
+      theme,
+      limit,
+      invalidate,
+    );
+    const rendered = appendDiffPreviewFooters(body, theme, {
+      totalLines: summary.totalLines,
+      limit,
+      hiddenLineNoun: "proposed diff lines",
+      syntaxHighlightSkipped,
+      skipHighlightLabel: "Syntax highlighting skipped for large proposed diff",
+    });
     if (operations.length > 1)
       sections.push(theme.fg("muted", `Proposed edit ${index + 1}/${operations.length}`));
     sections.push(rendered);

@@ -1,36 +1,27 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createWriteToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { AsyncPreview, shouldRenderAsync } from "../async-preview";
-import { getObjectValue, getPathArg, getTextContent } from "../data";
-import {
-  createProgressiveSyntaxHighlightedDiffText,
-  FullWidthDiffText,
-  renderPlainDiff,
-  summarizeDiff,
-} from "../diff";
-import { describeDiffShape, diffSummarySeparator } from "../diff-summary";
-import { countLabel, formatBytes, metadata, previewFooter, showingFooter } from "../format";
-import { resolvePreviewLanguage } from "../language";
-import { renderDisplayPath } from "../paths";
-import { codePreviewSettings } from "../settings";
-import { getShikiStatus, normalizeShikiLanguage, shouldSkipHighlight } from "../shiki";
-import { escapeControlChars } from "../terminal-text";
+import { AsyncPreview, shouldRenderAsync } from "../preview/async";
+import { getObjectValue, getPathArg, getTextContent } from "../tool-data";
+import { FullWidthDiffText } from "../diff/index";
+import { describeDiffShape, diffSummarySeparator, summarizeDiff } from "../diff/summary";
+import { countLabel, formatBytes, metadata, previewFooter, showingFooter } from "../preview/format";
+import { resolvePreviewLanguage } from "../syntax/language";
+import { renderDisplayPath } from "../paths/display";
+import { codePreviewSettings } from "../settings/index";
+import { getShikiStatus, normalizeShikiLanguage, shouldSkipHighlight } from "../syntax/shiki";
+import { escapeControlChars } from "../preview/terminal-text";
 import {
   createSimpleDiff,
   getWriteDiffSkipReason,
   readExistingFileForPreview,
   shouldSkipWriteDiffBytes,
-} from "../write-diff";
-import {
-  cachedPreview,
-  createCodePreviewToolShell,
-  countFileLines,
-  hiddenPreviewExpandHintForShell,
-  previewCacheKey,
-  renderHighlightedPreviewText,
-  withSecretWarning,
-} from "./common";
+} from "../write/diff";
+import { createDiffPreviewText } from "./shared/diff-preview";
+import { cachedPreview, previewCacheKey } from "./shared/cache";
+import { countFileLines, renderHighlightedPreviewText } from "./shared/preview-text";
+import { withSecretWarning } from "./shared/secret-preview";
+import { createCodePreviewToolShell, hiddenPreviewExpandHintForShell } from "./shared/shell";
 
 export function registerWrite(pi: ExtensionAPI, cwd: string) {
   const originalWrite = createWriteToolDefinition(cwd);
@@ -258,19 +249,11 @@ function renderWriteDiffPreview(
       ? summary.totalLines
       : codePreviewSettings.editCollapsedLines;
   const header = `${theme.fg("success", "✓ Write applied")} ${theme.fg("muted", describeDiffShape(summary))}${diffSummarySeparator(theme)}${theme.fg("success", `+${summary.additions}`)} ${theme.fg("error", `-${summary.removals}`)}\n`;
-  const skipSyntaxHighlight = shouldSkipHighlight(diff);
-  const decorate = (body: string) => {
-    let text = header + body;
-    if (summary.totalLines > limit)
-      text += showingFooter(theme, limit, summary.totalLines, "diff lines");
-    if (skipSyntaxHighlight)
-      text += previewFooter(theme, "Syntax highlighting skipped for large diff");
-    return text;
-  };
-  return skipSyntaxHighlight
-    ? new FullWidthDiffText(decorate(renderPlainDiff(diff, theme, limit)), theme)
-    : createProgressiveSyntaxHighlightedDiffText(diff, lang, theme, limit, {
-        decorate,
-        invalidate,
-      });
+  return createDiffPreviewText(diff, lang, theme, limit, {
+    totalLines: summary.totalLines,
+    hiddenLineNoun: "diff lines",
+    skipHighlightLabel: "Syntax highlighting skipped for large diff",
+    decorate: (body) => header + body,
+    invalidate,
+  });
 }

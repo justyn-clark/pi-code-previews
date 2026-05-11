@@ -1,7 +1,7 @@
-import type { DiffWordEmphasis } from "../src/settings";
-import { renderSyntaxHighlightedDiff, wordEmphasisTelemetry } from "../src/diff";
-import { changedRanges, changedRangesWithConfidence } from "../src/diff-word-emphasis";
-import { codePreviewSettings, setCodePreviewSettings } from "../src/settings";
+import type { DiffWordEmphasis } from "../src/settings/index";
+import { renderSyntaxHighlightedDiff, wordEmphasisTelemetry } from "../src/diff/index";
+import { changedRanges, changedRangesWithConfidence } from "../src/diff/word/emphasis";
+import { codePreviewSettings, setCodePreviewSettings } from "../src/settings/index";
 import {
   benchTheme,
   formatDuration,

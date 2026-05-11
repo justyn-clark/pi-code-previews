@@ -1,18 +1,20 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createGrepToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getTextContent } from "../data";
-import { metadata, previewFooter, showingFooter, trimSingleTrailingNewline } from "../format";
-import { renderGrepOutputLines } from "../grep-rendering";
-import { renderDisplayPath } from "../paths";
-import { codePreviewSettings } from "../settings";
-import { shouldSkipHighlight } from "../shiki";
-import { escapeControlChars } from "../terminal-text";
+import { getTextContent } from "../tool-data";
 import {
-  createCodePreviewToolShell,
-  renderHiddenPreviewExpandHint,
-  renderSelectedOutputLines,
-} from "./common";
+  metadata,
+  previewFooter,
+  showingFooter,
+  trimSingleTrailingNewline,
+} from "../preview/format";
+import { renderGrepOutputLines } from "../grep/render";
+import { renderDisplayPath } from "../paths/display";
+import { codePreviewSettings } from "../settings/index";
+import { shouldSkipHighlight } from "../syntax/shiki";
+import { escapeControlChars } from "../preview/terminal-text";
+import { renderSelectedOutputLines } from "./shared/preview-text";
+import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "./shared/shell";
 
 export function registerGrep(pi: ExtensionAPI, cwd: string) {
   const originalGrep = createGrepToolDefinition(cwd);

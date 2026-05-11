@@ -2,10 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createLsToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-import { renderDisplayPath } from "../paths";
-import { codePreviewSettings } from "../settings";
-import { createCodePreviewToolShell } from "./common";
-import { renderPathListResult } from "./path-list-result";
+import { renderDisplayPath } from "../paths/display";
+import { codePreviewSettings } from "../settings/index";
+import { createCodePreviewToolShell } from "./shared/shell";
+import { renderPathListResult } from "./shared/path-list-result";
 
 export function registerLs(pi: ExtensionAPI, cwd: string) {
   const originalLs = createLsToolDefinition(cwd);
