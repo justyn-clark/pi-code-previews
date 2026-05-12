@@ -1,7 +1,6 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createEditToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component } from "@earendil-works/pi-tui";
-import { getEditDiff, getEditPreviewOperations, getPathArg, getTextContent } from "../tool-data";
 import {
   createSimpleDiff,
   diffSummarySeparator,
@@ -9,20 +8,22 @@ import {
   summarizeDiff,
   type DiffSummary,
 } from "../diff";
-import { countLabel } from "../shared/format";
-import { showingFooter } from "../preview/format";
-import { resolvePreviewLanguage } from "../syntax/language";
 import { renderDisplayPath } from "../paths/display";
+import { showingFooter } from "../preview/format";
+import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
 import { codePreviewSettings } from "../settings/index";
+import { countLabel } from "../shared/format";
 import { escapeControlChars } from "../shared/terminal-text";
+import { resolvePreviewLanguage } from "../syntax/language";
+import { getEditPreviewOperations, getPathArg } from "../tool-data/args";
+import { getEditDiff, getTextContent } from "../tool-data/results";
+import { cachedAsyncPreview, diffPreviewCacheKey, previewArgsKey } from "./shared/cache";
 import {
   appendDiffPreviewFooters,
   createDiffPreviewText,
   diffPreviewLineLimit,
   renderDiffPreviewBody,
 } from "./shared/diff-preview";
-import { cachedAsyncPreview, diffPreviewCacheKey, previewArgsKey } from "./shared/cache";
-import { createCodePreviewToolShell, renderHiddenPreviewExpandHint } from "../preview/tool-shell";
 
 export function registerEdit(pi: ExtensionAPI, cwd: string) {
   const originalEdit = createEditToolDefinition(cwd);

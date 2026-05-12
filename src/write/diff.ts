@@ -14,7 +14,7 @@ export type ExistingFilePreview =
       sizeExceeded?: boolean;
     };
 
-const MAX_WRITE_DIFF_BYTES = positiveEnvInteger("CODE_PREVIEW_MAX_WRITE_DIFF_BYTES", 200000);
+export const MAX_WRITE_DIFF_BYTES = positiveEnvInteger("CODE_PREVIEW_MAX_WRITE_DIFF_BYTES", 200000);
 
 export async function readExistingFileForPreview(
   path: string,
@@ -73,10 +73,6 @@ export function shouldSkipWriteDiffBytes(...texts: string[]): boolean {
     if (total > MAX_WRITE_DIFF_BYTES) return true;
   }
   return false;
-}
-
-export function getMaxWriteDiffBytes(): number {
-  return MAX_WRITE_DIFF_BYTES;
 }
 
 function skippedExistingFile(

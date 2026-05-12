@@ -184,7 +184,7 @@ function matchChangedLinesByPosition(
     }
     if (!canCheckAmbiguity) continue;
 
-    const competingScore = competingChangedLineScoreByPosition(
+    const competingScore = competingChangedLineScoreAt(
       removed.length,
       added.length,
       index,
@@ -199,22 +199,6 @@ function matchChangedLinesByPosition(
     });
   }
   return pairs;
-}
-
-function competingChangedLineScoreByPosition(
-  removedLength: number,
-  addedLength: number,
-  removedPosition: number,
-  addedPosition: number,
-  scoreAt: ChangedLineScoreAt,
-): number {
-  return competingChangedLineScoreAt(
-    removedLength,
-    addedLength,
-    removedPosition,
-    addedPosition,
-    scoreAt,
-  );
 }
 
 type ChangedLineSimilarityDocuments = {

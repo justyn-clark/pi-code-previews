@@ -17,14 +17,14 @@ import {
 import { changedRangesForTokensWithConfidence } from "./emphasis";
 import type { ConfidentWordChangeRanges } from "./types";
 
-export type ChangedLineBlockAnalysis = {
+type ChangedLineBlockAnalysis = {
   removed: Array<IndexedChangedLine<RemovedDiffLine>>;
   added: Array<IndexedChangedLine<AddedDiffLine>>;
   pairs: ChangedLinePair[];
   ranges: ChangedLineRangePair[];
 };
 
-export type ChangedLineRangePair = {
+type ChangedLineRangePair = {
   pair: ChangedLinePair;
   ranges: ConfidentWordChangeRanges;
 };
@@ -33,12 +33,13 @@ export function analyzeChangedLineBlock(
   block: ParsedDiffLine[],
   wordEmphasis: DiffWordEmphasis,
 ): ChangedLineBlockAnalysis {
-  const removed = block.flatMap((line, index) =>
-    isRemovedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
-  );
-  const added = block.flatMap((line, index) =>
-    isAddedDiffLine(line) ? [indexedChangedLine(index, line)] : [],
-  );
+  const removed: Array<IndexedChangedLine<RemovedDiffLine>> = [];
+  const added: Array<IndexedChangedLine<AddedDiffLine>> = [];
+  for (let index = 0; index < block.length; index++) {
+    const line = block[index]!;
+    if (isRemovedDiffLine(line)) removed.push(indexedChangedLine(index, line));
+    else if (isAddedDiffLine(line)) added.push(indexedChangedLine(index, line));
+  }
   const removedByIndex = new Map(removed.map((line) => [line.index, line]));
   const addedByIndex = new Map(added.map((line) => [line.index, line]));
   const pairs = matchChangedLines(removed, added);

@@ -1,7 +1,6 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { createWriteToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getPathArg, getTextContent } from "../tool-data";
 import {
   createSimpleDiff,
   describeDiffShape,
@@ -9,23 +8,28 @@ import {
   FullWidthDiffText,
   summarizeDiff,
 } from "../diff";
-import { countContentLines } from "../preview/line-counts";
-import { countLabel, formatBytes } from "../shared/format";
-import { metadata } from "../preview/format";
-import { resolvePreviewLanguage } from "../syntax/language";
 import { renderDisplayPath } from "../paths/display";
+import { metadata } from "../preview/format";
+import { countContentLines } from "../preview/line-counts";
+import { createCodePreviewToolShell, hiddenPreviewExpandHintForShell } from "../preview/tool-shell";
 import { codePreviewSettings } from "../settings/index";
-import { normalizeShikiLanguage } from "../syntax/shiki";
-import { escapeControlChars } from "../shared/terminal-text";
-import { getWriteDiffSkipReason, shouldSkipWriteDiffBytes } from "../write/diff";
+import { countLabel, formatBytes } from "../shared/format";
 import { getObjectValue } from "../shared/objects";
+import { escapeControlChars } from "../shared/terminal-text";
+import { resolvePreviewLanguage } from "../syntax/language";
+import { normalizeShikiLanguage } from "../syntax/shiki";
+import { getPathArg } from "../tool-data/args";
+import { getTextContent } from "../tool-data/results";
+import {
+  getWriteDiffSkipReason,
+  readExistingFileForPreview,
+  shouldSkipWriteDiffBytes,
+} from "../write/diff";
 import {
   executeWriteWithPreview,
   getCodePreviewBeforeWrite,
-  readCodePreviewBeforeWrite,
   withCodePreviewBeforeWrite,
 } from "../write/preview-execution";
-import { createDiffPreviewText, diffPreviewLineLimit } from "./shared/diff-preview";
 import {
   cachedAsyncPreview,
   cachedPreview,
@@ -33,7 +37,7 @@ import {
   writeCallPreviewCacheKey,
 } from "./shared/cache";
 import { renderContentPreview } from "./shared/content-preview";
-import { createCodePreviewToolShell, hiddenPreviewExpandHintForShell } from "../preview/tool-shell";
+import { createDiffPreviewText, diffPreviewLineLimit } from "./shared/diff-preview";
 
 export function registerWrite(pi: ExtensionAPI, cwd: string) {
   const originalWrite = createWriteToolDefinition(cwd);
@@ -47,7 +51,7 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       const path = getPathArg(params);
       const content = getObjectValue(params, "content");
       if (!path || typeof content !== "string") {
-        const before = path ? await readCodePreviewBeforeWrite(path, cwd, "") : undefined;
+        const before = path ? await readExistingFileForPreview(path, cwd, "") : undefined;
         const result = await originalWrite.execute(toolCallId, params, signal, onUpdate, ctx);
         return withCodePreviewBeforeWrite(result, before);
       }

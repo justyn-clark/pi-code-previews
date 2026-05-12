@@ -1,10 +1,10 @@
-import type { DiffWordEmphasis } from "../../settings/types";
-import { splitLinesLimited } from "../../shared/text-lines";
-import { collectChangedDiffBlock } from "../changed-blocks";
-import { analyzeChangedLineBlock } from "./change-block";
-import { isChangedDiffLine, parseDiffLine, type ParsedDiffLine } from "../parse";
-import { shouldEmphasizeChangedPair } from "./emphasis";
-import type { WordChangeConfidence } from "./types";
+import type { DiffWordEmphasis } from "../settings/types";
+import { splitLinesLimited } from "../shared/text-lines";
+import { collectChangedDiffBlock } from "../diff/changed-blocks";
+import { isChangedDiffLine, parseDiffLine, type ParsedDiffLine } from "../diff/parse";
+import { analyzeChangedLineBlock } from "../diff/word/change-block";
+import { shouldEmphasizeChangedPair } from "../diff/word/emphasis";
+import type { WordChangeConfidence } from "../diff/word/types";
 
 export type WordEmphasisTelemetry = {
   changedBlocks: number;

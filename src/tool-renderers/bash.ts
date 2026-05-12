@@ -1,19 +1,28 @@
 import type { BashToolOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getBashWarnings } from "../warnings/bash";
-import { getTextContent, isTruncated } from "../tool-data";
+import { previewFooter, showingFooter, trimSingleTrailingNewline } from "../preview/format";
+import { createCodePreviewToolShell } from "../preview/tool-shell";
+import { codePreviewSettings } from "../settings/index";
 import { countLabel } from "../shared/format";
 import { getObjectValue } from "../shared/objects";
-import { previewFooter, showingFooter, trimSingleTrailingNewline } from "../preview/format";
-import { codePreviewSettings } from "../settings/index";
-import { renderHighlightedText } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
-import { shouldHideBashResult } from "./bash-preview-policy";
-import { withSecretWarning } from "./shared/secret-preview";
-import { createCodePreviewToolShell } from "../preview/tool-shell";
-import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
+import { getFirstShellCommandName } from "../shell/command";
+import { renderHighlightedText } from "../syntax/shiki";
+import { getTextContent, isTruncated } from "../tool-data/results";
+import { shouldHideShellResultByCommand } from "../tools/shell-result-policy";
+import { getBashWarnings } from "../warnings/bash";
 import { renderSelectedOutputLines } from "./shared/preview-text";
+import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
+import { withSecretWarning } from "./shared/secret-preview";
+
+function shouldHideBashResult(args: unknown): boolean {
+  const command = getObjectValue(args, "command");
+  return shouldHideShellResultByCommand(
+    typeof command === "string" ? getFirstShellCommandName(command) : undefined,
+    codePreviewSettings,
+  );
+}
 
 export function registerBash(pi: ExtensionAPI, cwd: string, options?: BashToolOptions) {
   const originalBash = createBashToolDefinition(cwd, options);

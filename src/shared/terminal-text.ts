@@ -7,7 +7,7 @@ export function escapeControlChars(text: string): string {
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "�");
 }
 
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
+const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 export function stripAnsi(text: string): string {

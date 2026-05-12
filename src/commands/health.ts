@@ -21,7 +21,7 @@ export function registerHealthCommand(pi: ExtensionAPI): void {
       const pendingTools = formatPendingCodePreviewTools();
       const lines = [
         "Code preview health",
-        `Shiki initialized: ${yesNo(status.initialized)}`,
+        `Shiki initialized: ${status.initialized ? "yes" : "no"}`,
         `Shiki theme: ${codePreviewSettings.shikiTheme}`,
         `Syntax highlighting: ${formatOnOff(codePreviewSettings.syntaxHighlighting)}`,
         `Tool call background: ${codePreviewSettings.toolCallBackground}`,
@@ -58,10 +58,6 @@ export function registerHealthCommand(pi: ExtensionAPI): void {
       );
     },
   });
-}
-
-function yesNo(value: boolean): "yes" | "no" {
-  return value ? "yes" : "no";
 }
 
 class HealthPanel implements Component {

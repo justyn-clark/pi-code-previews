@@ -4,7 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import { Text, type Component } from "@earendil-works/pi-tui";
-import { getTextContent } from "../../tool-data";
+import { getTextContent } from "../../tool-data/results";
 import { showingFooter, trimSingleTrailingNewline } from "../../preview/format";
 import { renderPathListLines } from "../../path-list/render";
 import { escapeControlChars } from "../../shared/terminal-text";

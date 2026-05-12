@@ -1,16 +1,17 @@
 import type { ExtensionAPI, ReadToolOptions } from "@earendil-works/pi-coding-agent";
 import { createReadToolDefinition, getLanguageFromPath } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getPathArg, getReadStartLine, getTextContent, isTruncated } from "../tool-data";
-import { metadata, previewFooter } from "../preview/format";
-import { resolvePreviewLanguage } from "../syntax/language";
 import { renderDisplayPath } from "../paths/display";
+import { metadata, previewFooter } from "../preview/format";
+import { createCodePreviewToolShell } from "../preview/tool-shell";
 import { codePreviewSettings } from "../settings/index";
-import { normalizeShikiLanguage } from "../syntax/shiki";
 import { escapeControlChars } from "../shared/terminal-text";
+import { resolvePreviewLanguage } from "../syntax/language";
+import { normalizeShikiLanguage } from "../syntax/shiki";
+import { getPathArg, getReadStartLine } from "../tool-data/args";
+import { getTextContent, isTruncated } from "../tool-data/results";
 import { renderContentPreview } from "./shared/content-preview";
 import { renderHiddenPreviewPrelude, renderResultPrelude } from "./shared/result-prelude";
-import { createCodePreviewToolShell } from "../preview/tool-shell";
 
 export function registerRead(pi: ExtensionAPI, cwd: string, options?: ReadToolOptions) {
   const originalRead = createReadToolDefinition(cwd, options);

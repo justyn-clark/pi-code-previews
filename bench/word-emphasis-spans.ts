@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { renderSyntaxHighlightedDiff } from "../src/diff/index";
-import { wordEmphasisTelemetry } from "../src/diff/word/telemetry";
 import { codePreviewSettings, setCodePreviewSettings } from "../src/settings/index";
+import { stripAnsi } from "../src/shared/terminal-text";
+import { wordEmphasisTelemetry } from "../src/testing/word-emphasis-telemetry";
 
 const WORD_EMPHASIS_OPEN = /\x1b\[48;2;(?:64;132;82|148;62;70)m\x1b\[1m/g;
 const WORD_EMPHASIS_CLOSE = "\x1b[22m\x1b[49m";
@@ -42,10 +43,6 @@ function emphasizedSpans(line: string): string[] {
     WORD_EMPHASIS_OPEN.lastIndex = end + WORD_EMPHASIS_CLOSE.length;
   }
   return spans;
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
 
 function plainTheme(): Theme {

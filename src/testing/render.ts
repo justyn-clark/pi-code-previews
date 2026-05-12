@@ -5,13 +5,10 @@ import {
   codePreviewSettings,
   type CodePreviewSettings,
 } from "../settings/index";
+export { stripAnsi } from "../shared/terminal-text";
 
 export function renderComponent(component: Component, width = 100): string {
   return component.render(width).join("\n");
-}
-
-export function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
 
 export function delay(ms: number): Promise<void> {

@@ -17,14 +17,6 @@ export function getCodePreviewBeforeWrite(details: unknown): unknown {
   return getObjectValue(details, CODE_PREVIEW_BEFORE_WRITE_DETAIL);
 }
 
-export function readCodePreviewBeforeWrite(
-  path: string,
-  cwd: string,
-  nextContent = "",
-): Promise<CodePreviewBeforeWrite> {
-  return readExistingFileForPreview(path, cwd, nextContent);
-}
-
 export async function executeWriteWithPreview(
   path: string,
   content: string,
@@ -61,7 +53,7 @@ function executeWriteWithPreviewLock(
 
     (async () => {
       try {
-        const before = await readCodePreviewBeforeWrite(path, cwd, content);
+        const before = await readExistingFileForPreview(path, cwd, content);
         if (aborted) return;
         await mkdir(dirname(absolutePath), { recursive: true });
         if (aborted) return;

@@ -55,14 +55,10 @@ export function createCodePreviewToolShell(
   mode: ToolCallBackgroundMode = codePreviewSettings.toolCallBackground,
 ): CodePreviewToolShell {
   return {
-    renderShell: codePreviewRenderShell(mode),
+    renderShell: mode === "on" ? "default" : "self",
     renderCall: (context, theme, render) => renderCodePreviewCall(mode, context, theme, render),
     renderResult: (context, theme, render) => renderCodePreviewResult(mode, context, theme, render),
   };
-}
-
-function codePreviewRenderShell(mode: ToolCallBackgroundMode): "default" | "self" {
-  return mode === "on" ? "default" : "self";
 }
 
 function renderCodePreviewCall<TState, TArgs>(
