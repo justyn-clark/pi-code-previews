@@ -47,9 +47,7 @@ export function registerWrite(pi: ExtensionAPI, cwd: string) {
       const path = getPathArg(params);
       const content = getObjectValue(params, "content");
       if (!path || typeof content !== "string") {
-        const before = path
-          ? await readCodePreviewBeforeWrite(path, cwd, typeof content === "string" ? content : "")
-          : undefined;
+        const before = path ? await readCodePreviewBeforeWrite(path, cwd, "") : undefined;
         const result = await originalWrite.execute(toolCallId, params, signal, onUpdate, ctx);
         return withCodePreviewBeforeWrite(result, before);
       }

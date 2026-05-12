@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { renderSyntaxHighlightedDiff, wordEmphasisTelemetry } from "../src/diff/index";
+import { renderSyntaxHighlightedDiff } from "../src/diff/index";
+import { wordEmphasisTelemetry } from "../src/diff/word/telemetry";
 import { codePreviewSettings, setCodePreviewSettings } from "../src/settings/index";
 
 const WORD_EMPHASIS_OPEN = /\x1b\[48;2;(?:64;132;82|148;62;70)m\x1b\[1m/g;

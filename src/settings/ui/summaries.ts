@@ -1,4 +1,4 @@
-import type { CodePreviewSettings } from "../index";
+import type { CodePreviewSettings } from "../types";
 import { formatOnOff } from "../on-off";
 import { ALL_CODE_PREVIEW_TOOLS } from "../../tools/names";
 

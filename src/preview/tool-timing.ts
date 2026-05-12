@@ -22,9 +22,9 @@ export type TimingState = Record<string, unknown> & {
   codePreviewTimingResultComponent?: Component;
 };
 
-export interface ToolCallTiming {
+type ToolCallTiming = {
   label: string;
-}
+};
 
 export function renderTimedResultFooter<TContext extends ToolTimingRenderContext>(
   context: TContext,

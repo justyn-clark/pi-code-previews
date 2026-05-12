@@ -5,15 +5,11 @@ import { escapeControlChars } from "../shared/terminal-text";
 import { isToolOutputNoticeLine } from "../shared/tool-output-notice";
 import type { PathIconMode } from "../settings/types";
 
-export interface PathListRenderOptions {
-  iconMode: PathIconMode;
-}
-
 export function renderPathListLines(
   output: string,
   cwd: string,
   theme: Theme,
-  options: PathListRenderOptions,
+  options: { iconMode: PathIconMode },
 ): string[] {
   const { iconMode } = options;
   const lines = output.split("\n");
@@ -49,7 +45,7 @@ function renderTreePath(
   const parts = clean.replace(/\/$/, "").split("/").filter(Boolean);
   let prefix = "";
   for (let index = 0; index < parts.length; index++) {
-    const part = parts[index] ?? "";
+    const part = parts[index]!;
     const isLeaf = index === parts.length - 1;
     const key = prefix ? `${prefix}/${part}` : part;
     const indent = "  ".repeat(index);

@@ -51,18 +51,18 @@ export function parseGrepOutputLine(line: string): ParsedGrepOutputLine | undefi
   const matchLine = line.match(/^(.+):(\d+):\s(.*)$/);
   if (matchLine) {
     return {
-      path: matchLine[1] ?? "",
-      lineNumber: matchLine[2] ?? "",
-      code: matchLine[3] ?? "",
+      path: matchLine[1],
+      lineNumber: matchLine[2],
+      code: matchLine[3],
       kind: "match",
     };
   }
   const contextLine = line.match(/^(.+)-(\d+)-\s(.*)$/);
   if (contextLine) {
     return {
-      path: contextLine[1] ?? "",
-      lineNumber: contextLine[2] ?? "",
-      code: contextLine[3] ?? "",
+      path: contextLine[1],
+      lineNumber: contextLine[2],
+      code: contextLine[3],
       kind: "context",
     };
   }

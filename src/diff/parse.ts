@@ -18,7 +18,7 @@ export function parseDiffLine(line: string): ParsedDiffLine | null {
   const match = line.match(/^([+\- ])(\s*\d*)\s(.*)$/);
   if (!match) return null;
   const kind = match[1] as ParsedDiffLine["kind"];
-  return { kind, lineNumber: match[2] ?? "", content: match[3] ?? "" };
+  return { kind, lineNumber: match[2], content: match[3] };
 }
 
 export function isAddedDiffLine(line: ParsedDiffLine | null): line is AddedDiffLine {

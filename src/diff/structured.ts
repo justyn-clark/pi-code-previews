@@ -38,7 +38,7 @@ export function createStructuredDiff(before: string, after: string): StructuredD
     const chunkLines = splitDiffLines(change.value);
 
     if (!change.added && !change.removed) {
-      const hasFutureChange = hasChangeAfter[index] ?? false;
+      const hasFutureChange = hasChangeAfter[index];
       if (!emittedChange && hasFutureChange) {
         const start = Math.max(0, chunkLines.length - context);
         lines.push(...contextLines(chunkLines.slice(start), oldLine + start, newLine + start));

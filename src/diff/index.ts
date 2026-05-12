@@ -7,4 +7,3 @@ export {
   summarizeDiff,
   type DiffSummary,
 } from "./summary";
-export { wordEmphasisTelemetry, type WordEmphasisTelemetry } from "./word/telemetry";

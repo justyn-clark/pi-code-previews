@@ -16,15 +16,15 @@ const STRUCTURAL_PUNCTUATION_TOKEN_PATTERN = /^[{}()[\].,;]$/;
 export function wordEmphasisTokens(text: string): WordEmphasisToken[] {
   const tokens: WordEmphasisToken[] = [];
   for (const match of text.matchAll(WORD_TOKEN_PATTERN)) {
-    const value = match[0] ?? "";
-    const start = match.index ?? 0;
+    const value = match[0];
+    const start = match.index;
     tokens.push({ value, start, end: start + value.length });
   }
   return tokens;
 }
 
 export function wordTokenValues(text: string): string[] {
-  return Array.from(text.matchAll(WORD_TOKEN_PATTERN), (match) => match[0] ?? "");
+  return Array.from(text.matchAll(WORD_TOKEN_PATTERN), (match) => match[0]);
 }
 
 export function isIdentifierToken(value: string): boolean {
@@ -53,8 +53,8 @@ export function splitIdentifierToken(value: string, start: number): WordEmphasis
   const partPattern =
     /[$_]+|(?:\p{Lu}\p{Mark}*)+(?=(?:\p{Lu}\p{Mark}*)(?:\p{Ll}\p{Mark}*)|\p{N}|$)|(?:\p{Lu}\p{Mark}*)?(?:\p{Ll}\p{Mark}*)+|\p{N}+|(?:\p{Lu}\p{Mark}*)+|(?:\p{L}\p{Mark}*)+/gu;
   for (const match of value.matchAll(partPattern)) {
-    const part = match[0] ?? "";
-    const offset = match.index ?? 0;
+    const part = match[0];
+    const offset = match.index;
     parts.push({ value: part, start: start + offset, end: start + offset + part.length });
   }
   return parts.length > 0 ? parts : [{ value, start, end: start + value.length }];

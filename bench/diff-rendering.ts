@@ -1,4 +1,4 @@
-import type { DiffWordEmphasis } from "../src/settings/index";
+import type { DiffWordEmphasis } from "../src/settings/types";
 import {
   benchTheme,
   formatDuration,

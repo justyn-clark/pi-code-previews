@@ -8,9 +8,9 @@ import {
   renderPlainDiff,
   renderSyntaxHighlightedDiff,
   summarizeDiff,
-  wordEmphasisTelemetry,
 } from "./index";
 import { changedRanges, changedRangesWithConfidence } from "./word/emphasis";
+import { wordEmphasisTelemetry } from "./word/telemetry";
 
 let previousCodePreviewSettings = { ...codePreviewSettings };
 

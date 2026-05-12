@@ -4,7 +4,7 @@ import { shouldSkipHighlight } from "../../syntax/shiki";
 import { renderHighlightedPreviewText } from "./preview-text";
 import { withSecretWarning } from "./secret-preview";
 
-export type ContentPreview = {
+type ContentPreview = {
   text: string;
   total: number;
 };
